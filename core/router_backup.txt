@@ -1,0 +1,532 @@
+import urllib.parse
+import subprocess
+import os
+import time
+import re
+import requests
+import pyautogui
+
+
+class Router:
+
+    def __init__(self, windows, media):
+
+        self.windows = windows
+        self.media = media
+
+        # =====================================================
+        # TU CHROME REAL
+        # =====================================================
+
+        self.chrome_path = (
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+        )
+
+        self.chrome_user_data = (
+            r"C:\Users\junel\AppData\Local\Google\Chrome\User Data"
+        )
+
+        self.chrome_profile = "Default"
+
+    # =========================================================
+    # EJECUTAR
+    # =========================================================
+
+    def execute(self, result):
+
+        if not isinstance(result, dict):
+            return "No entendí la orden."
+
+        intent = str(
+            result.get("intent", "UNKNOWN")
+        ).upper().strip()
+
+        target = str(
+            result.get("target", "")
+        ).strip()
+
+        try:
+            confidence = float(
+                result.get("confidence", 0)
+            )
+        except Exception:
+            confidence = 0.0
+
+        print()
+        print("🔀 ROUTER:", intent)
+        print("🎯 TARGET:", target)
+
+        if confidence < 0.50:
+            return (
+                "No estoy suficientemente "
+                "segura de lo que quieres."
+            )
+
+        # =====================================================
+        # PROGRAMAS
+        # =====================================================
+
+        if intent == "OPEN_PROGRAM":
+            return self.windows.open_program(target)
+
+        if intent == "CLOSE_PROGRAM":
+            return self.windows.close_program(target)
+
+        # =====================================================
+        # URL
+        # =====================================================
+
+        if intent == "OPEN_URL":
+            return self.windows.open_url(target)
+
+        # =====================================================
+        # GOOGLE
+        # =====================================================
+
+        if intent in [
+            "SEARCH_GOOGLE",
+            "GOOGLE_SEARCH",
+            "SEARCH_WEB",
+            "WEB_SEARCH"
+        ]:
+            return self.search_google(target)
+
+        # =====================================================
+        # YOUTUBE
+        # =====================================================
+
+        if intent in [
+            "SEARCH_YOUTUBE",
+            "YOUTUBE_SEARCH",
+            "PLAY_YOUTUBE"
+        ]:
+            return self.search_youtube(target)
+
+        # =====================================================
+        # SILENCIO
+        # =====================================================
+
+        if intent in [
+            "VOLUME_MUTE",
+            "MUTE"
+        ]:
+            return self.media.volume_mute()
+
+        # =====================================================
+        # QUITAR SILENCIO
+        # =====================================================
+
+        if intent in [
+            "VOLUME_UNMUTE",
+            "UNMUTE"
+        ]:
+            return self.unmute()
+
+        # =====================================================
+        # VOLUMEN
+        # =====================================================
+
+        if intent == "VOLUME_UP":
+            return self.media.volume_up()
+
+        if intent == "VOLUME_DOWN":
+            return self.media.volume_down()
+
+        # =====================================================
+        # MEDIA
+        # =====================================================
+
+        if intent in [
+            "MEDIA_PLAY",
+            "RESUME_MEDIA"
+        ]:
+            return self.media.play()
+
+        if intent in [
+            "MEDIA_PAUSE",
+            "PAUSE_MEDIA"
+        ]:
+            return self.media.pause()
+
+        if intent == "STOP_MEDIA":
+            return self.media.pause()
+
+        if intent == "MEDIA_NEXT":
+            return self.media.next()
+
+        if intent == "MEDIA_PREVIOUS":
+            return self.media.previous()
+
+        # =====================================================
+        # ARCHIVO
+        # =====================================================
+
+        if intent == "OPEN_FILE":
+            return self.windows.open_file(target)
+
+        return "Todavía no sé hacer eso."
+
+    # =========================================================
+    # ABRIR TU CHROME REAL
+    # =========================================================
+
+    def open_chrome(self, url):
+
+        if not os.path.exists(self.chrome_path):
+
+            print()
+            print("❌ NO ENCONTRÉ CHROME:")
+            print(self.chrome_path)
+
+            return False
+
+        try:
+
+            print()
+            print("🌐 ABRIENDO TU CHROME...")
+            print("📁 PERFIL:", self.chrome_profile)
+            print("🔗 URL:", url)
+
+            subprocess.Popen(
+                [
+                    self.chrome_path,
+                    "--profile-directory="
+                    + self.chrome_profile,
+                    url
+                ],
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+            )
+
+            time.sleep(3)
+
+            return True
+
+        except Exception as error:
+
+            print()
+            print("❌ ERROR CHROME:")
+            print(error)
+
+            return False
+
+    # =========================================================
+    # GOOGLE
+    # =========================================================
+
+    def search_google(self, query):
+
+        query = str(query).strip()
+
+        if not query:
+
+            return (
+                "No me dijiste qué quieres buscar."
+            )
+
+        encoded = urllib.parse.quote_plus(query)
+
+        url = (
+            "https://www.google.com/search?q="
+            + encoded
+        )
+
+        print()
+        print("🔎 GOOGLE:", query)
+
+        if self.open_chrome(url):
+
+            return (
+                "Buscando "
+                + query
+                + " en Google."
+            )
+
+        return "No pude abrir tu Chrome."
+
+    # =========================================================
+    # OBTENER PRIMER VIDEO DE YOUTUBE
+    # =========================================================
+
+    def get_first_youtube_video(self, query):
+
+        try:
+
+            encoded = urllib.parse.quote_plus(query)
+
+            search_url = (
+                "https://www.youtube.com/results"
+                "?search_query="
+                + encoded
+            )
+
+            print()
+            print("🔎 ANALIZANDO RESULTADOS DE YOUTUBE...")
+
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 "
+                    "(Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) "
+                    "Chrome/140.0 Safari/537.36"
+                )
+            }
+
+            response = requests.get(
+                search_url,
+                headers=headers,
+                timeout=10
+            )
+
+            html = response.text
+
+            # =================================================
+            # BUSCAR IDs DE VIDEOS
+            # =================================================
+
+            matches = re.findall(
+                r'"videoId":"([A-Za-z0-9_-]{11})"',
+                html
+            )
+
+            if not matches:
+
+                print(
+                    "⚠️ NO SE ENCONTRÓ VIDEO DIRECTAMENTE."
+                )
+
+                return None
+
+            # =================================================
+            # QUITAR DUPLICADOS
+            # =================================================
+
+            unique_ids = []
+
+            for video_id in matches:
+
+                if video_id not in unique_ids:
+
+                    unique_ids.append(video_id)
+
+            if not unique_ids:
+
+                return None
+
+            video_id = unique_ids[0]
+
+            video_url = (
+                "https://www.youtube.com/watch?v="
+                + video_id
+            )
+
+            print()
+            print("🎯 VIDEO ENCONTRADO:")
+            print(video_url)
+
+            return video_url
+
+        except Exception as error:
+
+            print()
+            print(
+                "❌ ERROR BUSCANDO VIDEO:"
+            )
+
+            print(error)
+
+            return None
+
+    # =========================================================
+    # DAR PLAY CON TECLADO
+    # =========================================================
+
+    def press_play(self):
+
+        try:
+
+            print()
+            print(
+                "▶️ INTENTANDO REPRODUCIR..."
+            )
+
+            time.sleep(3)
+
+            # Asegurar que Chrome esté al frente
+            pyautogui.hotkey(
+                "alt",
+                "tab"
+            )
+
+            time.sleep(0.5)
+
+            # Espacio = Play/Pause en YouTube
+            pyautogui.press(
+                "space"
+            )
+
+            print(
+                "▶️ PLAY ENVIADO."
+            )
+
+            return True
+
+        except Exception as error:
+
+            print()
+            print(
+                "❌ ERROR AL DAR PLAY:"
+            )
+
+            print(error)
+
+            return False
+
+    # =========================================================
+    # YOUTUBE
+    # =========================================================
+
+    def search_youtube(self, query):
+
+        query = str(query).strip()
+
+        if not query:
+
+            return (
+                "No me dijiste qué quieres "
+                "buscar en YouTube."
+            )
+
+        print()
+        print("=" * 55)
+        print("▶️ YOUTUBE:", query)
+        print("=" * 55)
+
+        # =====================================================
+        # BUSCAR EL VIDEO
+        # =====================================================
+
+        video_url = self.get_first_youtube_video(
+            query
+        )
+
+        # =====================================================
+        # SI NO ENCONTRAMOS EL VIDEO
+        # =====================================================
+
+        if not video_url:
+
+            encoded = urllib.parse.quote_plus(
+                query
+            )
+
+            search_url = (
+                "https://www.youtube.com/results"
+                "?search_query="
+                + encoded
+            )
+
+            print(
+                "🌐 ABRIENDO RESULTADOS..."
+            )
+
+            self.open_chrome(
+                search_url
+            )
+
+            return (
+                "Abrí los resultados de "
+                + query
+                + " en YouTube."
+            )
+
+        # =====================================================
+        # ABRIR VIDEO DIRECTAMENTE
+        # =====================================================
+
+        print()
+        print(
+            "🎬 ABRIENDO VIDEO DIRECTAMENTE..."
+        )
+
+        opened = self.open_chrome(
+            video_url
+        )
+
+        if not opened:
+
+            return (
+                "Encontré el video, "
+                "pero no pude abrir Chrome."
+            )
+
+        # =====================================================
+        # ESPERAR CARGA
+        # =====================================================
+
+        print(
+            "⏳ ESPERANDO QUE CARGUE EL VIDEO..."
+        )
+
+        time.sleep(5)
+
+        # =====================================================
+        # PLAY
+        # =====================================================
+
+        self.press_play()
+
+        print()
+        print(
+            "✅ VIDEO ENVIADO A REPRODUCCIÓN."
+        )
+
+        return (
+            "Reproduciendo "
+            + query
+            + " en YouTube."
+        )
+
+    # =========================================================
+    # QUITAR SILENCIO
+    # =========================================================
+
+    def unmute(self):
+
+        try:
+
+            import ctypes
+
+            print()
+            print(
+                "🔊 ACTIVANDO SONIDO..."
+            )
+
+            VK_VOLUME_MUTE = 0xAD
+
+            ctypes.windll.user32.keybd_event(
+                VK_VOLUME_MUTE,
+                0,
+                0,
+                0
+            )
+
+            ctypes.windll.user32.keybd_event(
+                VK_VOLUME_MUTE,
+                0,
+                2,
+                0
+            )
+
+            return "Sonido activado."
+
+        except Exception as error:
+
+            print(
+                "❌ ERROR AUDIO:",
+                error
+            )
+
+            return (
+                "No pude activar el sonido."
+            )
