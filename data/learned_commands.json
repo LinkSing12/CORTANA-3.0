@@ -1,0 +1,11 @@
+{
+    "trabajo": {
+        "type": "command",
+        "intent": "OPEN_PROGRAM",
+        "target": "chrome",
+        "confidence": 0.95,
+        "learned_at": "...",
+        "uses": 2,
+        "last_used": "2026-08-21T19:42:24"
+    }
+}

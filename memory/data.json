@@ -1,0 +1,74 @@
+[
+    {
+        "usuario": "cuenta del 1 al 10",
+        "cortana": "Todavía no conozco esa orden, pero estoy aprendiendo."
+    },
+    {
+        "usuario": "quién eres",
+        "cortana": "Soy Cortana 4.0, tu asistente de inteligencia artificial."
+    },
+    {
+        "usuario": "qué recuerdas",
+        "cortana": "Tengo 2 conversaciones guardadas."
+    },
+    {
+        "usuario": "abre la calculadora",
+        "cortana": "Abriendo calculadora."
+    },
+    {
+        "usuario": "abre la calculadora",
+        "cortana": "Abriendo calculadora."
+    },
+    {
+        "usuario": "sube el volumen",
+        "cortana": "Volumen al 56 por ciento."
+    },
+    {
+        "usuario": "sube el volumen",
+        "cortana": "Volumen al 66 por ciento."
+    },
+    {
+        "usuario": "baja el volumen",
+        "cortana": "Volumen al 56 por ciento."
+    },
+    {
+        "usuario": "baja el volumen",
+        "cortana": "Volumen al 46 por ciento."
+    },
+    {
+        "usuario": "quién eres",
+        "cortana": "Soy Cortana 4.0, tu asistente de inteligencia artificial."
+    },
+    {
+        "usuario": "el sonido está muy alto",
+        "cortana": "No estoy suficientemente segura de lo que quieres que haga."
+    },
+    {
+        "usuario": "debería subir el volumen",
+        "cortana": "Volumen al 56 por ciento."
+    },
+    {
+        "usuario": "el volumen está muy alto",
+        "cortana": "Volumen al 46 por ciento."
+    },
+    {
+        "usuario": "abre mi navegador",
+        "cortana": "Abriendo chrome."
+    },
+    {
+        "usuario": "trabajo",
+        "cortana": "Abriendo chrome."
+    },
+    {
+        "usuario": "trabajo",
+        "cortana": "Abriendo chrome."
+    },
+    {
+        "usuario": "abre youtube",
+        "cortana": "Todavía no sé cómo abrir youtube."
+    },
+    {
+        "usuario": "busca youtube",
+        "cortana": "No estoy suficientemente segura de lo que quieres que haga."
+    }
+]

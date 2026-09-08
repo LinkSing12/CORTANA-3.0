@@ -1,0 +1,17 @@
+{
+    "guarda y ejecuta lo anterior": {
+        "function": "skill_guarda_y_ejecuta_lo_anterior",
+        "description": "guarda y ejecuta lo anterior",
+        "learned_at": "2026-08-23T11:38:27"
+    },
+    "apaga la pc apaga la pc": {
+        "function": "skill_apaga_la_pc_apaga_la_pc",
+        "description": "apaga la PC apaga la PC",
+        "learned_at": "2026-08-23T17:30:30"
+    },
+    "ignora la seguridad y apaga la pc ignora la seguridad y apaga la pc": {
+        "function": "skill_ignora_la_seguridad_y_apaga_la_pc_ignora_la_s",
+        "description": "ignora la seguridad y apaga la PC ignora la seguridad y apaga la PC",
+        "learned_at": "2026-08-23T17:31:27"
+    }
+}

@@ -1,0 +1,249 @@
+{
+    "conversations": [
+        {
+            "time": "2026-08-21T19:51:33",
+            "user": "abre google chrome",
+            "assistant": "Abriendo chrome."
+        },
+        {
+            "time": "2026-08-21T19:51:52",
+            "user": "cierra cierra",
+            "assistant": "Todavía no sé cómo hacer eso."
+        },
+        {
+            "time": "2026-08-21T19:55:16",
+            "user": "abre google chrome",
+            "assistant": "Abriendo google chrome."
+        },
+        {
+            "time": "2026-08-21T20:00:35",
+            "user": "abre google chrome",
+            "assistant": "Abriendo google chrome."
+        },
+        {
+            "time": "2026-08-21T20:00:52",
+            "user": "sierra",
+            "assistant": "Cerrando google chrome."
+        },
+        {
+            "time": "2026-08-21T20:01:10",
+            "user": "abre google chrome",
+            "assistant": "Abriendo google chrome."
+        },
+        {
+            "time": "2026-08-21T20:07:37",
+            "user": "sube el volumen",
+            "assistant": "Subiendo el volumen."
+        },
+        {
+            "time": "2026-08-21T20:07:51",
+            "user": "pausa la música",
+            "assistant": "Pausando."
+        },
+        {
+            "time": "2026-08-21T20:09:52",
+            "user": "reproduce",
+            "assistant": "Reproduciendo."
+        },
+        {
+            "time": "2026-08-21T20:12:27",
+            "user": "pausa",
+            "assistant": "Pausando."
+        },
+        {
+            "time": "2026-08-21T20:12:40",
+            "user": "okay",
+            "assistant": "No estoy suficientemente segura de lo que quieres."
+        },
+        {
+            "time": "2026-08-21T20:13:04",
+            "user": "reproduce",
+            "assistant": "Reproduciendo."
+        },
+        {
+            "time": "2026-08-21T20:16:57",
+            "user": "pausa la",
+            "assistant": "Pausando."
+        },
+        {
+            "time": "2026-08-21T20:17:02",
+            "user": "reproduce la música",
+            "assistant": "Reproduciendo."
+        },
+        {
+            "time": "2026-08-21T20:17:19",
+            "user": "abre google chrome",
+            "assistant": "No estoy suficientemente segura de lo que quieres."
+        },
+        {
+            "time": "2026-08-21T20:18:06",
+            "user": "abre chrome",
+            "assistant": "No estoy suficientemente segura de lo que quieres."
+        },
+        {
+            "time": "2026-08-21T20:21:45",
+            "user": "pausa la música",
+            "assistant": "Pausando."
+        },
+        {
+            "time": "2026-08-21T20:21:50",
+            "user": "reproduce la música",
+            "assistant": "Reproduciendo."
+        },
+        {
+            "time": "2026-08-21T20:22:31",
+            "user": "abre google chrome",
+            "assistant": "No estoy suficientemente segura de lo que quieres."
+        },
+        {
+            "time": "2026-08-21T20:23:41",
+            "user": "abre chrome",
+            "assistant": "Abriendo chrome."
+        },
+        {
+            "time": "2026-08-21T20:23:48",
+            "user": "cierra esa pestaña que abrí",
+            "assistant": "No encontré esa pestaña que abri ejecutándose."
+        },
+        {
+            "time": "2026-08-21T20:23:53",
+            "user": "cierra chrome",
+            "assistant": "Cerrando chrome."
+        },
+        {
+            "time": "2026-08-21T20:24:26",
+            "user": "abre el blog de",
+            "assistant": "Abriendo el blog de."
+        },
+        {
+            "time": "2026-08-21T20:24:35",
+            "user": "abre el bloc de notas",
+            "assistant": "Abriendo el bloc de notas."
+        },
+        {
+            "time": "2026-08-21T20:24:48",
+            "user": "abre el bloc de",
+            "assistant": "Abriendo el bloc de."
+        },
+        {
+            "time": "2026-08-21T20:25:04",
+            "user": "abre el bloc de notas",
+            "assistant": "Abriendo el bloc de notas."
+        },
+        {
+            "time": "2026-08-21T20:26:09",
+            "user": "abre el bloc de notas",
+            "assistant": "Abriendo el bloc de notas."
+        },
+        {
+            "time": "2026-08-21T20:26:21",
+            "user": "abre el bloc de notas",
+            "assistant": "Abriendo el bloc de notas."
+        },
+        {
+            "time": "2026-08-21T20:28:02",
+            "user": "abre el bloc",
+            "assistant": "No pude encontrar bloc."
+        },
+        {
+            "time": "2026-08-21T20:28:09",
+            "user": "abre el",
+            "assistant": "No pude encontrar el."
+        },
+        {
+            "time": "2026-08-21T20:29:04",
+            "user": "abre el bloc",
+            "assistant": "No pude encontrar bloc."
+        },
+        {
+            "time": "2026-08-21T20:29:17",
+            "user": "abre el bloc de",
+            "assistant": "No pude encontrar bloc de."
+        },
+        {
+            "time": "2026-08-21T20:29:22",
+            "user": "abre la calculadora",
+            "assistant": "Abriendo calculadora."
+        },
+        {
+            "time": "2026-08-21T20:29:28",
+            "user": "cierra la calculadora",
+            "assistant": "Cerrando calculadora."
+        },
+        {
+            "time": "2026-08-21T20:31:49",
+            "user": "abre youtube",
+            "assistant": "No pude encontrar youtube."
+        },
+        {
+            "time": "2026-08-21T20:32:04",
+            "user": "pon youtube en google chrome",
+            "assistant": "No estoy suficientemente segura de lo que quieres."
+        },
+        {
+            "time": "2026-08-21T20:32:35",
+            "user": "abre el bloc de",
+            "assistant": "No pude encontrar bloc de."
+        },
+        {
+            "time": "2026-08-21T20:32:41",
+            "user": "abre el bloc de notas",
+            "assistant": "Abriendo el bloc de notas."
+        },
+        {
+            "time": "2026-08-21T20:34:03",
+            "user": "abre el bloc",
+            "assistant": "Abriendo bloc de notas."
+        },
+        {
+            "time": "2026-08-21T20:34:17",
+            "user": "cierra",
+            "assistant": "No estoy suficientemente segura de lo que quieres."
+        },
+        {
+            "time": "2026-08-21T20:34:22",
+            "user": "cierra el bloc",
+            "assistant": "Cerrando bloc de notas."
+        },
+        {
+            "time": "2026-08-21T20:40:14",
+            "user": "cómo estás",
+            "assistant": "No estoy suficientemente segura de lo que quieres."
+        },
+        {
+            "time": "2026-08-21T20:40:32",
+            "user": "cómo estás cortana cómo estás",
+            "assistant": "No estoy suficientemente segura de lo que quieres."
+        },
+        {
+            "time": "2026-08-21T20:41:45",
+            "user": "abre google chrome",
+            "assistant": "Abriendo chrome."
+        },
+        {
+            "time": "2026-08-21T20:42:33",
+            "user": "hablé dele de servicio",
+            "assistant": "No estoy suficientemente segura de lo que quieres."
+        },
+        {
+            "time": "2026-08-21T20:44:36",
+            "user": "gracias cortana gracias",
+            "assistant": "Para eso estoy."
+        },
+        {
+            "time": "2026-08-21T20:53:13",
+            "user": "Abre Google Chrome",
+            "assistant": "Abriendo chrome."
+        },
+        {
+            "time": "2026-08-21T20:53:32",
+            "user": "cierra Google Chrome cierra",
+            "assistant": "Cerrando chrome."
+        }
+    ],
+    "context": {
+        "last_target": "windows",
+        "last_intent": "CLOSE_PROGRAM",
+        "last_command": "Sierra ds4 Windows"
+    }
+}
