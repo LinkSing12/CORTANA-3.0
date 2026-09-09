@@ -33,7 +33,7 @@ class Updater:
     # AJUSTA ESTO CON TU REPOSITORIO REAL
     # Formato: "usuario/nombre-del-repo"
     # =====================================================
-    GITHUB_REPO = "LinkSing12/cortana-ia"
+    GITHUB_REPO = "LinkSing12/CORTANA-3.0"
 
     def __init__(self, project_root=None, version_file=None):
 

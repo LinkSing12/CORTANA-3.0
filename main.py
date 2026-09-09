@@ -11,6 +11,10 @@ def main():
     cortana = Cortana()
     cortana.set_interface(window)
 
+    # Lo que escribas en la ventana se procesa exactamente igual
+    # que un comando por voz o por consola (mismo respond()).
+    window.set_on_submit(cortana.respond)
+
     # Cortana (consola + hilo de voz) corre en su propio hilo,
     # porque Tkinter (la ventana) solo puede correr su mainloop
     # en el hilo principal.

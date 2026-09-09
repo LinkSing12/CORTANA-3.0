@@ -93,6 +93,22 @@ class WindowsController:
             "ubisoft connect": ["upc.exe", "UbisoftConnect.exe"],
         }
 
+        # =====================================================
+        # PROGRAMAS QUE PIDEN CONFIRMACIÓN DE ADMINISTRADOR
+        # =====================================================
+        # Para cada uno, crea una Tarea Programada de Windows con
+        # "ejecutar con privilegios más altos" (ver instrucciones),
+        # y agrega aquí: "nombre que le dices a cortana": "NombreDeLaTarea"
+        #
+        # Ejemplo:
+        #   schtasks /create /tn "Cortana_AbrirSekiro" /tr "\"C:\...\sekiro.exe\""
+        #            /sc once /st 00:00 /sd 01/01/2099 /rl highest /f
+        #
+        self.elevated_tasks = {
+            "sekiro": "Cortana_AbrirSekiro",
+            # "otro juego": "Cortana_AbrirOtroJuego",
+        }
+
         self.scan_programs()
 
     # ------------------------------------------------------------------
