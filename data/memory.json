@@ -242,8 +242,8 @@
         }
     ],
     "context": {
-        "last_target": "windows",
-        "last_intent": "CLOSE_PROGRAM",
-        "last_command": "Sierra ds4 Windows"
+        "last_target": "busca actualizaciones",
+        "last_intent": "WEB_SEARCH",
+        "last_command": "busca actualizaciones"
     }
 }

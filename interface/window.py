@@ -3,23 +3,6 @@ import tkinter as tk
 
 class CortanaWindow:
 
-    # =========================================================
-    # ESTADOS DEL "ROSTRO" (indicador visual de ánimo/actividad)
-    # Cada estado tiene un texto y un color. assistant.py llama
-    # a set_face_state("ready"/"listening"/"thinking"/"speaking"/
-    # "waiting"/"processing"/"error") en cada paso del flujo.
-    # =========================================================
-
-    FACE_STATES = {
-        "ready": ("● CORTANA LISTA", "#00ff88"),
-        "listening": ("● ESCUCHANDO", "#00d9ff"),
-        "processing": ("● PROCESANDO", "#ffd166"),
-        "thinking": ("● PENSANDO", "#ffd166"),
-        "speaking": ("● HABLANDO", "#00d9ff"),
-        "waiting": ("● ESPERANDO CONFIRMACIÓN", "#ff9f1c"),
-        "error": ("● ERROR", "#ff4d4d"),
-    }
-
     def __init__(self):
 
         self.root = tk.Tk()
@@ -238,6 +221,63 @@ class CortanaWindow:
         )
 
         # =====================================================
+        # ESCRIBIR ORDEN (texto, además de voz)
+        # =====================================================
+
+        # Se guarda como callback externo (asignado con
+        # set_on_submit) para no acoplar la ventana a Cortana.
+        self._on_submit = None
+
+        self.input_frame = tk.Frame(
+            self.root,
+            bg="#0b0f14"
+        )
+
+        self.input_frame.pack(
+            fill="x",
+            padx=50,
+            pady=(0, 10)
+        )
+
+        self.input_entry = tk.Entry(
+            self.input_frame,
+            font=("Segoe UI", 13),
+            bg="#151b23",
+            fg="white",
+            insertbackground="white",
+            relief="flat"
+        )
+
+        self.input_entry.pack(
+            side="left",
+            fill="x",
+            expand=True,
+            ipady=8,
+            padx=(0, 8)
+        )
+
+        self.input_entry.bind(
+            "<Return>",
+            self._handle_submit
+        )
+
+        self.send_button = tk.Button(
+            self.input_frame,
+            text="Enviar",
+            font=("Segoe UI", 11, "bold"),
+            bg="#00d9ff",
+            fg="#0b0f14",
+            relief="flat",
+            command=self._handle_submit
+        )
+
+        self.send_button.pack(
+            side="left",
+            ipady=6,
+            ipadx=10
+        )
+
+        # =====================================================
         # PIE
         # =====================================================
 
@@ -255,6 +295,40 @@ class CortanaWindow:
         )
 
     # =========================================================
+    # ENTRADA DE TEXTO
+    # =========================================================
+
+    def set_on_submit(self, callback):
+        """
+        Registra la función que se llama cuando el usuario escribe
+        algo y presiona Enter o el botón "Enviar". La función se
+        ejecuta en un hilo aparte para no congelar la ventana
+        mientras Cortana procesa la orden (puede tardar por Ollama,
+        internet, o la voz hablando la respuesta).
+        """
+        self._on_submit = callback
+
+    def _handle_submit(self, event=None):
+
+        text = self.input_entry.get().strip()
+
+        if not text:
+            return
+
+        self.input_entry.delete(0, tk.END)
+
+        if not self._on_submit:
+            return
+
+        import threading
+
+        threading.Thread(
+            target=self._on_submit,
+            args=(text,),
+            daemon=True
+        ).start()
+
+    # =========================================================
     # ESTADO
     # =========================================================
 
@@ -263,28 +337,6 @@ class CortanaWindow:
         self.root.after(
             0,
             lambda: self.status.config(text=text)
-        )
-
-    # =========================================================
-    # ROSTRO (indicador de estado/ánimo)
-    # =========================================================
-    # Reutiliza el mismo label de "ESTADO" (self.status), cambiando
-    # texto y color según la etapa del flujo. Si assistant.py llama
-    # a set_status() y set_face_state() en la misma respuesta, gana
-    # la última llamada — es el comportamiento esperado, ya que
-    # ambas reflejan lo mismo (el estado actual de Cortana).
-    # =========================================================
-
-    def set_face_state(self, state):
-
-        text, color = self.FACE_STATES.get(
-            str(state).lower().strip(),
-            (f"● {str(state).upper()}", "#7f8c9a")
-        )
-
-        self.root.after(
-            0,
-            lambda: self.status.config(text=text, fg=color)
         )
 
     # =========================================================

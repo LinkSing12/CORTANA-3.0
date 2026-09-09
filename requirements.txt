@@ -1,4 +1,30 @@
+# --- Control de Windows ---
+psutil
+pywinauto
+pyautogui
+pytesseract
+
+# --- Voz ---
 SpeechRecognition
-PyAudio
 pyttsx3
+PyAudio
+
+# --- Internet ---
 requests
+ddgs
+
+# --- Empaquetado a .exe / watcher del pendrive ---
+pyinstaller
+pywin32
+
+# Notas de instalación en Windows:
+# 1) pip install -r requirements.txt
+# 2) Si "pip install PyAudio" falla, instala el .whl precompilado
+#    correspondiente a tu version de Python desde:
+#    https://www.lfd.uci.edu/~gohlke/pythonlibbs/#pyaudio
+#    o usa: pip install pipwin && pipwin install pyaudio
+# 3) pytesseract necesita el ejecutable de Tesseract OCR instalado
+#    aparte (https://github.com/UB-Mannheim/tesseract/wiki) solo si
+#    quieres que el click en "Jugar/Play" funcione por OCR además de UIA.
+# 4) Cortana usa un modelo local via Ollama (http://localhost:11434).
+#    Instala Ollama y baja el modelo: ollama pull qwen3:14b

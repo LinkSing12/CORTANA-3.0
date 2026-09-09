@@ -18,6 +18,7 @@ from core.brain import Brain
 from core.router import Router
 from core.learning_brain import LearningBrain
 from core.conversation import Conversation
+from core.updater import Updater
 
 
 class Cortana:
@@ -44,6 +45,8 @@ class Cortana:
         # AJUSTA esta carpeta a donde tengas tu música real si no
         # está en la carpeta "Música" por defecto de Windows.
         self.winamp = WinampController()
+
+        self.updater = Updater()
 
         self.brain = Brain()
 
@@ -148,6 +151,21 @@ class Cortana:
             print("   Para arrancarlo: abre la app Ollama, o corre 'ollama serve'.")
             print("=" * 55)
         print()
+
+        try:
+            update_info = self.updater.check_for_update()
+            if update_info and update_info.get("available"):
+                print("=" * 55)
+                print(
+                    f"🔄 ACTUALIZACIÓN DISPONIBLE: "
+                    f"{update_info['current_version']} -> "
+                    f"{update_info['latest_version']}"
+                )
+                print("   Di 'busca actualizaciones' para instalarla.")
+                print("=" * 55)
+                print()
+        except Exception as error:
+            print("ERROR CHEQUEANDO ACTUALIZACIONES AL ARRANCAR:", error)
 
         try:
             self.speaker.speak(
@@ -697,6 +715,66 @@ class Cortana:
 
                 print(
                     "ERROR CANCELANDO APAGADO:",
+                    error
+                )
+
+            return True
+
+        # =====================================================
+        # ACTUALIZACIONES
+        # =====================================================
+
+        update_commands = [
+            "busca actualizaciones",
+            "buscar actualizaciones",
+            "hay actualizaciones",
+            "revisa actualizaciones",
+            "actualiza cortana",
+            "actualizar cortana",
+            "actualízate",
+            "actualizate"
+        ]
+
+        if command in update_commands:
+
+            print()
+            print("LOCAL: BUSCAR ACTUALIZACIONES")
+
+            try:
+
+                self.speaker.speak(
+                    "Buscando actualizaciones, dame un momento."
+                )
+            except Exception:
+                pass
+
+            try:
+
+                response = self.updater.check_download_and_apply()
+
+                print(
+                    "CORTANA:",
+                    response
+                )
+
+                self._update_window(
+                    intent="UPDATE",
+                    target="",
+                    response=response,
+                    status="● CORTANA LISTA"
+                )
+
+                try:
+                    self.speaker.speak(
+                        response
+                    )
+                except Exception:
+                    pass
+
+            except Exception as error:
+
+                print(
+                    "ERROR BUSCANDO ACTUALIZACIONES:",
                     error
                 )
 
