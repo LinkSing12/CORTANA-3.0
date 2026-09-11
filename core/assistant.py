@@ -48,6 +48,12 @@ class Cortana:
 
         self.updater = Updater()
 
+        # Guarda la acción destructiva que está esperando confirmación
+        # (flujo de dos turnos: "desinstala X" / "borra la carpeta X"
+        # -> Cortana pregunta -> usuario dice "sí" -> se ejecuta).
+        # Formato: {"type": "uninstall" | "delete_folder", "target": ...}
+        self.pending_confirmation = None
+
         self.brain = Brain()
 
         self.router = Router(
@@ -153,17 +159,20 @@ class Cortana:
         print()
 
         try:
-            update_info = self.updater.check_for_update()
-            if update_info and update_info.get("available"):
-                print("=" * 55)
-                print(
-                    f"🔄 ACTUALIZACIÓN DISPONIBLE: "
-                    f"{update_info['current_version']} -> "
-                    f"{update_info['latest_version']}"
-                )
-                print("   Di 'busca actualizaciones' para instalarla.")
-                print("=" * 55)
-                print()
+            if self.updater.should_check_now():
+                update_info = self.updater.check_for_update()
+                if update_info and update_info.get("available"):
+                    print("=" * 55)
+                    print(
+                        f"🔄 ACTUALIZACIÓN DISPONIBLE: "
+                        f"{update_info['current_version']} -> "
+                        f"{update_info['latest_version']}"
+                    )
+                    print("   Di 'busca actualizaciones' para instalarla.")
+                    print("=" * 55)
+                    print()
+            else:
+                print("(Chequeo de actualizaciones en enfriamiento, se omite por ahora.)")
         except Exception as error:
             print("ERROR CHEQUEANDO ACTUALIZACIONES AL ARRANCAR:", error)
 
@@ -378,6 +387,62 @@ class Cortana:
 
         return ("name", text)
 
+    # =========================================================
+    # CARPETAS: EXTRAER NOMBRE Y UBICACIÓN SIN IMPORTAR EL ORDEN
+    # =========================================================
+
+    FOLDER_LOCATION_WORDS = (
+        r"escritorio|documentos|descargas|imagenes|imágenes|"
+        r"musica|música|videos|vídeos"
+    )
+
+    def _parse_folder_command(self, command, verbs):
+        """
+        Extrae (nombre, ubicación) de una orden de carpeta, sin
+        importar en qué parte de la frase venga la ubicación:
+
+            "crea una carpeta llamada tareas en el escritorio"
+            "crea una carpeta en el escritorio llamada tareas"
+            "crea una carpeta en documentos que se llame tareas"
+
+        Todas deben dar name="tareas", location="escritorio"/"documentos".
+        Devuelve (None, None) si el verbo/objeto ("carpeta") no calza.
+        """
+
+        verb_pattern = "|".join(verbs)
+
+        # 1) Separar la ubicación de donde sea que esté en la frase.
+        location_search = re.search(
+            rf"\ben\s+(?:el\s+|la\s+)?({self.FOLDER_LOCATION_WORDS})\b",
+            command
+        )
+
+        location = location_search.group(1) if location_search else None
+
+        remainder = command
+        if location_search:
+            remainder = (
+                command[:location_search.start()]
+                + " "
+                + command[location_search.end():]
+            )
+
+        remainder = re.sub(r"\s+", " ", remainder).strip()
+
+        # 2) Con la ubicación ya fuera, extraer el nombre de lo que queda.
+        name_match = re.match(
+            rf"^(?:{verb_pattern})\s+(?:la\s+|una\s+)?carpeta\s*"
+            r"(?:llamada\s+|que\s+se\s+llame\s+)?(.*)$",
+            remainder
+        )
+
+        if not name_match:
+            return None, None
+
+        name = name_match.group(1).strip()
+
+        return (name or None), location
+
     def _control_playback(self, action):
         """
         Controla play/pausa/stop/siguiente/anterior.
@@ -446,6 +511,326 @@ class Cortana:
     def handle_local_command(self, command):
 
         command = command.lower().strip()
+
+        # =====================================================
+        # CONFIRMACIÓN DE DESINSTALACIÓN PENDIENTE
+        # Si Cortana ya preguntó "¿quieres desinstalar X?", esta
+        # respuesta corta confirma (o cancela) esa acción específica.
+        # Solo aplica si hay algo realmente pendiente, para no
+        # interceptar un "sí" normal en otro contexto.
+        # =====================================================
+
+        if self.pending_confirmation:
+
+            confirm_words = {
+                "si", "sí", "confirmo", "confirmado", "hazlo",
+                "adelante", "dale", "sisi", "si si"
+            }
+
+            cancel_words = {
+                "no", "cancela", "cancelar", "mejor no", "olvidalo",
+                "olvídalo", "detente", "para"
+            }
+
+            if command in confirm_words:
+
+                pending = self.pending_confirmation
+                self.pending_confirmation = None
+
+                print()
+                print(
+                    "LOCAL: CONFIRMAR ACCIÓN ->",
+                    pending
+                )
+
+                try:
+                    if pending["type"] == "uninstall":
+                        response = self.windows.uninstall_program(
+                            pending["target"], confirmed=True
+                        )
+                        response_intent = "UNINSTALL_PROGRAM"
+                    elif pending["type"] == "delete_folder":
+                        response = self.windows.delete_folder(
+                            pending["target"],
+                            location=pending.get("location"),
+                            confirmed=True
+                        )
+                        response_intent = "DELETE_FOLDER"
+                    else:
+                        response = "No supe qué confirmar."
+                        response_intent = "UNKNOWN"
+                except Exception as error:
+                    print("ERROR CONFIRMANDO ACCIÓN:", error)
+                    response = "No pude completar la acción."
+                    response_intent = "UNKNOWN"
+
+                print("CORTANA:", response)
+
+                self._update_window(
+                    intent=response_intent,
+                    target=pending.get("target", ""),
+                    response=response,
+                    status="● CORTANA LISTA"
+                )
+
+                try:
+                    self.speaker.speak(response)
+                except Exception:
+                    pass
+
+                return True
+
+            if command in cancel_words:
+
+                self.pending_confirmation = None
+
+                response = "Está bien, no hago nada."
+
+                print("CORTANA:", response)
+
+                try:
+                    self.speaker.speak(response)
+                except Exception:
+                    pass
+
+                return True
+
+        # =====================================================
+        # INSTALAR PROGRAMA (vía winget)
+        # =====================================================
+
+        install_match = re.match(
+            r"^(?:instala|instalar|descarga\s+e\s+instala)"
+            r"\s+(?:el\s+programa\s+|la\s+aplicaci[oó]n\s+)?(.+)$",
+            command
+        )
+
+        if install_match:
+
+            name = install_match.group(1).strip()
+
+            if name:
+
+                print()
+                print(
+                    "LOCAL: INSTALAR ->",
+                    name
+                )
+
+                try:
+                    self.speaker.speak(
+                        f"Instalando {name}, esto puede tardar unos minutos."
+                    )
+                except Exception:
+                    pass
+
+                try:
+                    response = self.windows.install_program(name)
+                except Exception as error:
+                    print("ERROR INSTALANDO:", error)
+                    response = f"No pude instalar {name}."
+
+                print("CORTANA:", response)
+
+                self._update_window(
+                    intent="INSTALL_PROGRAM",
+                    target=name,
+                    response=response,
+                    status="● CORTANA LISTA"
+                )
+
+                try:
+                    self.speaker.speak(response)
+                except Exception:
+                    pass
+
+                return True
+
+        # =====================================================
+        # DESINSTALAR PROGRAMA
+        # =====================================================
+
+        uninstall_match = re.match(
+            r"^(?:desinstala|desinstalar|elimina|eliminar)"
+            r"\s+(?:el\s+programa\s+|la\s+aplicaci[oó]n\s+)?"
+            r"(?!(?:la\s+)?carpeta\b)(.+)$",
+            command
+        )
+
+        if uninstall_match:
+
+            target = uninstall_match.group(1).strip()
+
+            if target:
+
+                print()
+                print(
+                    "LOCAL: DESINSTALAR ->",
+                    target
+                )
+
+                try:
+                    response = self.windows.uninstall_program(
+                        target, confirmed=False
+                    )
+                except Exception as error:
+                    print("ERROR DESINSTALANDO:", error)
+                    response = "No pude buscar ese programa."
+
+                if response.startswith("CONFIRMATION_REQUIRED:"):
+
+                    self.pending_confirmation = {
+                        "type": "uninstall",
+                        "target": target
+                    }
+                    spoken = response.replace(
+                        "CONFIRMATION_REQUIRED:", ""
+                    ).strip()
+
+                    print("CORTANA:", spoken)
+
+                    self._update_window(
+                        intent="UNINSTALL_PROGRAM",
+                        target=target,
+                        response=spoken,
+                        status="● ESPERANDO CONFIRMACIÓN"
+                    )
+
+                    try:
+                        self.speaker.speak(spoken)
+                    except Exception:
+                        pass
+
+                else:
+
+                    print("CORTANA:", response)
+
+                    try:
+                        self.speaker.speak(response)
+                    except Exception:
+                        pass
+
+                return True
+
+        # =====================================================
+        # CREAR CARPETA
+        # =====================================================
+
+        folder_name, folder_location = self._parse_folder_command(
+            command, ("crea", "crear", "haz", "hazme")
+        )
+
+        if folder_name is not None:
+
+            if not folder_name:
+
+                response = "¿Cómo quieres que se llame la carpeta?"
+
+                print("CORTANA:", response)
+
+                try:
+                    self.speaker.speak(response)
+                except Exception:
+                    pass
+
+                return True
+
+            print()
+            print(
+                "LOCAL: CREAR CARPETA ->",
+                folder_name,
+                "EN",
+                folder_location or "escritorio"
+            )
+
+            try:
+                response = self.windows.create_folder(folder_name, folder_location)
+            except Exception as error:
+                print("ERROR CREANDO CARPETA:", error)
+                response = "No pude crear la carpeta."
+
+            print("CORTANA:", response)
+
+            self._update_window(
+                intent="CREATE_FOLDER",
+                target=folder_name,
+                response=response,
+                status="● CORTANA LISTA"
+            )
+
+            try:
+                self.speaker.speak(response)
+            except Exception:
+                pass
+
+            return True
+
+        # =====================================================
+        # BORRAR CARPETA (a la papelera de reciclaje)
+        # =====================================================
+
+        delete_name, delete_location = self._parse_folder_command(
+            command, ("borra", "borrar", "elimina", "eliminar")
+        )
+
+        if delete_name is not None:
+
+            name = delete_name
+            location = delete_location
+
+            if name:
+
+                print()
+                print(
+                    "LOCAL: BORRAR CARPETA ->",
+                    name,
+                    "EN",
+                    location or "(buscar en todas)"
+                )
+
+                try:
+                    response = self.windows.delete_folder(
+                        name, location=location, confirmed=False
+                    )
+                except Exception as error:
+                    print("ERROR BORRANDO CARPETA:", error)
+                    response = "No pude buscar esa carpeta."
+
+                if response.startswith("CONFIRMATION_REQUIRED:"):
+
+                    self.pending_confirmation = {
+                        "type": "delete_folder",
+                        "target": name,
+                        "location": location
+                    }
+                    spoken = response.replace(
+                        "CONFIRMATION_REQUIRED:", ""
+                    ).strip()
+
+                    print("CORTANA:", spoken)
+
+                    self._update_window(
+                        intent="DELETE_FOLDER",
+                        target=name,
+                        response=spoken,
+                        status="● ESPERANDO CONFIRMACIÓN"
+                    )
+
+                    try:
+                        self.speaker.speak(spoken)
+                    except Exception:
+                        pass
+
+                else:
+
+                    print("CORTANA:", response)
+
+                    try:
+                        self.speaker.speak(response)
+                    except Exception:
+                        pass
+
+                return True
 
         # =====================================================
         # WINAMP — nombre o número de canción
@@ -1811,6 +2196,28 @@ class Cortana:
 
         else:
 
+            # Últimos intercambios reales (pregunta + respuesta), para
+            # que el cerebro pueda resolver preguntas de seguimiento
+            # ("¿y cuándo murió?" después de "¿quién fue X?") sin que
+            # el usuario tenga que repetir el tema cada vez.
+            try:
+                recent_turns = self.memory.get_history(amount=4)
+            except Exception as error:
+                print("ERROR LEYENDO HISTORIAL:", error)
+                recent_turns = []
+
+            history_lines = []
+            for turn in recent_turns:
+                user_line = str(turn.get("user", "")).strip()
+                assistant_line = str(turn.get("assistant", "")).strip()
+                if user_line or assistant_line:
+                    history_lines.append(f"Usuario: {user_line}")
+                    history_lines.append(f"Cortana: {assistant_line}")
+
+            recent_history_text = (
+                "\n".join(history_lines) if history_lines else "(sin historial reciente)"
+            )
+
             context = {
                 "last_target":
                     self.memory.get_context(
@@ -1828,7 +2235,10 @@ class Cortana:
                     self.memory.get_context(
                         "last_command",
                         ""
-                    )
+                    ),
+
+                "recent_history":
+                    recent_history_text
             }
 
             print()
@@ -2035,6 +2445,14 @@ class Cortana:
             self.memory.set_context(
                 "last_command",
                 text
+            )
+
+            # Guarda el intercambio real (lo que preguntaste + lo que
+            # respondió Cortana) para que futuras preguntas de
+            # seguimiento puedan usarlo como contexto.
+            self.memory.save(
+                text,
+                response or ""
             )
 
         except Exception as error:

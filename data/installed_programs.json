@@ -8,12 +8,16 @@
     "blitz": {
       "name": "Blitz",
       "path": "C:\\Users\\junel\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Blitz.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "\"C:\\Users\\junel\\AppData\\Local\\Programs\\Blitz\\Uninstall Blitz.exe\" /currentuser",
+      "display_icon": "C:\\Users\\junel\\AppData\\Local\\Programs\\Blitz\\Blitz.exe,0"
     },
     "discord": {
       "name": "Discord",
       "path": "C:\\Users\\junel\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Discord Inc\\Discord.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "C:\\Users\\junel\\AppData\\Local\\Discord\\Update.exe --uninstall",
+      "display_icon": ""
     },
     "file explorer": {
       "name": "File Explorer",
@@ -23,7 +27,9 @@
     "gamesir connect": {
       "name": "GameSir Connect",
       "path": "C:\\Users\\junel\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\GameSir Connect.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "MsiExec.exe /I{E39A73F7-76C8-44B0-AC08-D8E43B985DE9}",
+      "display_icon": ""
     },
     "nahimic companion": {
       "name": "Nahimic Companion",
@@ -68,12 +74,23 @@
     "escritorio remoto de chrome": {
       "name": "Escritorio remoto de Chrome",
       "path": "C:\\Users\\junel\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Aplicaciones de Chrome\\Escritorio remoto de Chrome.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "\"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --profile-directory=Default --uninstall-app-id=cmkncekebbebpfilplodngbpllndjkfo",
+      "display_icon": "C:\\Users\\junel\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Web Applications\\_crx_cmkncekebbebpfilplodngbpllndjkfo\\Escritorio remoto de Chrome.ico"
+    },
+    "youtube": {
+      "name": "YouTube",
+      "path": "C:\\Users\\junel\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Aplicaciones de Chrome\\YouTube.lnk",
+      "type": "app",
+      "uninstall": "\"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --profile-directory=Default --uninstall-app-id=agimnkijcaahngcdmfeangaknmldooml",
+      "display_icon": "C:\\Users\\junel\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Web Applications\\_crx_agimnkijcaahngcdmfeangaknmldooml\\YouTube.ico"
     },
     "github desktop": {
       "name": "GitHub Desktop",
       "path": "C:\\Users\\junel\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\GitHub, Inc\\GitHub Desktop.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "\"C:\\Users\\junel\\AppData\\Local\\GitHubDesktop\\Update.exe\" --uninstall",
+      "display_icon": "C:\\Users\\junel\\AppData\\Local\\GitHubDesktop\\app.ico"
     },
     "desinstalar hoyoplay": {
       "name": "Desinstalar HoYoPlay",
@@ -83,12 +100,16 @@
     "genshin impact": {
       "name": "Genshin Impact",
       "path": "C:\\Users\\junel\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\HoYoPlay\\Genshin Impact.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "E:\\HoYoPlay\\launcher.exe --uninstall_game=hk4e_global",
+      "display_icon": "E:\\HoYoPlay\\1.17.0.376\\ico\\hk4e_global.ico"
     },
     "hoyoplay": {
       "name": "HoYoPlay",
       "path": "C:\\Users\\junel\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\HoYoPlay\\HoYoPlay.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "E:\\HoYoPlay\\uninstall.exe",
+      "display_icon": "E:\\HoYoPlay\\launcher.exe"
     },
     "jdownloader 2 uninstaller": {
       "name": "JDownloader 2 Uninstaller",
@@ -98,7 +119,9 @@
     "jdownloader 2": {
       "name": "JDownloader 2",
       "path": "C:\\Users\\junel\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\JDownloader 2.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "\"C:\\Users\\junel\\AppData\\Local\\JDownloader 2\\Uninstall JDownloader.exe\"",
+      "display_icon": "C:\\Users\\junel\\AppData\\Local\\JDownloader 2\\.install4j\\i4j_extf_6_69g5ss_1kdboqw.ico"
     },
     "msi afterburner": {
       "name": "MSI Afterburner",
@@ -208,7 +231,9 @@
     "steam": {
       "name": "Steam",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Steam\\Steam.lnk",
-      "type": "game"
+      "type": "game",
+      "uninstall": "C:\\Program Files (x86)\\Steam\\uninstall.exe",
+      "display_icon": "C:\\Program Files (x86)\\Steam\\uninstall.exe"
     },
     "command prompt": {
       "name": "Command Prompt",
@@ -273,7 +298,9 @@
     "epic games launcher": {
       "name": "Epic Games Launcher",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Epic Games Launcher.lnk",
-      "type": "game"
+      "type": "game",
+      "uninstall": "MsiExec.exe /X{C23B176B-93F5-43F3-BEE0-E8F4527EFFE6}",
+      "display_icon": ""
     },
     "excel": {
       "name": "Excel",
@@ -283,12 +310,16 @@
     "google chrome": {
       "name": "Google Chrome",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Google Chrome.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "\"C:\\Program Files\\Google\\Chrome\\Application\\153.0.8010.36\\Installer\\setup.exe\" --uninstall --channel=stable --system-level --verbose-logging",
+      "display_icon": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe,0"
     },
     "microsoft edge": {
       "name": "Microsoft Edge",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Microsoft Edge.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "\"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\152.0.4191.66\\Installer\\setup.exe\" --uninstall --msedge --channel=stable --system-level --verbose-logging",
+      "display_icon": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\152.0.4191.66\\msedge.exe,0"
     },
     "onenote": {
       "name": "OneNote",
@@ -313,12 +344,16 @@
     "samfw tool": {
       "name": "SamFw Tool",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\SamFw Tool.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "\"C:\\SamFwTool\\unins000.exe\"",
+      "display_icon": "C:\\SamFwTool\\SamFwTool.exe"
     },
     "teamviewer": {
       "name": "TeamViewer",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\TeamViewer.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "\"C:\\Program Files\\TeamViewer\\uninstall.exe\"",
+      "display_icon": "C:\\Program Files\\TeamViewer\\TeamViewer.exe"
     },
     "visio": {
       "name": "Visio",
@@ -453,7 +488,9 @@
     "anydesk": {
       "name": "AnyDesk",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\AnyDesk.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "\"C:\\Program Files (x86)\\AnyDesk\\AnyDesk.exe\" --uninstall",
+      "display_icon": "\"C:\\Program Files (x86)\\AnyDesk\\AnyDesk.exe\""
     },
     "uninstall anydesk": {
       "name": "Uninstall AnyDesk",
@@ -463,12 +500,16 @@
     "battle net": {
       "name": "Battle.net",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Battle.net\\Battle.net.lnk",
-      "type": "game"
+      "type": "game",
+      "uninstall": "\"C:\\ProgramData\\Battle.net\\Agent\\Blizzard Uninstaller.exe\" --lang=esMX --uid=battle.net --displayname=\"Battle.net\"",
+      "display_icon": "C:\\Program Files (x86)\\Battle.net\\Battle.net.exe"
     },
     "being a dik season 1": {
       "name": "Being a DIK - Season 1",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Being a DIK - Season 1 [GOG.com]\\Being a DIK - Season 1.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "\"C:\\GOG Games\\Being a DIK\\unins000.exe\"",
+      "display_icon": "C:\\GOG Games\\Being a DIK\\goggame-1181224050.ico"
     },
     "being a dik 32 bit": {
       "name": "Being a DIK 32-bit",
@@ -483,7 +524,9 @@
     "call of duty": {
       "name": "Call of Duty",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Call of Duty\\Call of Duty.lnk",
-      "type": "game"
+      "type": "game",
+      "uninstall": "\"C:\\ProgramData\\Battle.net\\Agent\\Blizzard Uninstaller.exe\" --lang=esMX --uid=auks --displayname=\"Call of Duty\"",
+      "display_icon": "E:\\Call of Duty\\_retail_\\cod.exe"
     },
     "elamigos releases and updates official site": {
       "name": "== ElAmigos Releases and Updates @ official site ==",
@@ -623,7 +666,9 @@
     "google play games": {
       "name": "Google Play Games",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Google Play Games\\Google Play Games.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "\"C:\\Program Files\\Google\\Play Games\\Uninstaller.exe\" /o{47B07D71-505D-4665-AFD4-4972A30C6530}",
+      "display_icon": "C:\\Program Files\\Google\\Play Games\\Uninstaller.exe"
     },
     "preferencias de idioma de office": {
       "name": "Preferencias de idioma de Office",
@@ -683,7 +728,9 @@
     "microsoft silverlight": {
       "name": "Microsoft Silverlight",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Microsoft Silverlight\\Microsoft Silverlight.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "MsiExec.exe /X{89F4137D-6C26-4A84-BDB8-2E5A4BB71E00}",
+      "display_icon": ""
     },
     "bthps3 driver configuration tool": {
       "name": "BthPS3 Driver Configuration Tool",
@@ -753,12 +800,16 @@
     "razer chroma": {
       "name": "Razer Chroma",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Razer\\Razer Chroma.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "C:\\WINDOWS\\Installer\\Razer\\Installer2\\App\\RazerInstaller.exe /uninstall true",
+      "display_icon": "C:\\ProgramData\\Razer\\Razer Chroma\\chroma.ico"
     },
     "razer synapse": {
       "name": "Razer Synapse",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Razer\\Razer Synapse.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "C:\\WINDOWS\\Installer\\Razer\\Installer2\\App\\RazerInstaller.exe /uninstall true",
+      "display_icon": "C:\\ProgramData\\Razer\\Razer Synapse\\synapse.ico"
     },
     "cliente de riot": {
       "name": "Cliente de Riot",
@@ -768,12 +819,16 @@
     "league of legends": {
       "name": "League of Legends",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Riot Games\\League of Legends.lnk",
-      "type": "game"
+      "type": "game",
+      "uninstall": "\"C:\\Riot Games\\Riot Client\\RiotClientServices.exe\" --uninstall-product=league_of_legends --uninstall-patchline=live",
+      "display_icon": "C:/ProgramData/Riot Games/Metadata/league_of_legends.live/league_of_legends.live.ico"
     },
     "riot client": {
       "name": "Riot Client",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Riot Games\\Riot Client.lnk",
-      "type": "game"
+      "type": "game",
+      "uninstall": "\"C:\\Riot Games\\Riot Client\\RiotClientServices.exe\" --uninstall-product=Riot_Client --uninstall-patchline=",
+      "display_icon": "C:/Riot Games/Riot Client/Resources/icon.ico"
     },
     "desinstalar samsung magician": {
       "name": "Desinstalar Samsung Magician",
@@ -783,7 +838,9 @@
     "samsung magician": {
       "name": "Samsung Magician",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Samsung Magician\\Samsung Magician.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "\"C:\\Program Files (x86)\\Samsung\\Samsung Magician\\unins000.exe\"",
+      "display_icon": "C:\\Program Files (x86)\\Samsung\\Samsung Magician\\unins000.exe"
     },
     "desinstalar sekiro shadows die twice": {
       "name": "Desinstalar Sekiro Shadows Die Twice",
@@ -818,7 +875,9 @@
     "urbanvpn": {
       "name": "UrbanVPN",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\UrbanVPN\\UrbanVPN.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "msiexec.exe /x {7998CAE9-FE17-41C2-97D8-294C383653A3} AI_UNINSTALLER_CTP=1",
+      "display_icon": "C:\\WINDOWS\\Installer\\{7998CAE9-FE17-41C2-97D8-294C383653A3}\\urbanvpnapp.exe"
     },
     "documentation": {
       "name": "Documentation",
@@ -848,7 +907,9 @@
     "vlc media player": {
       "name": "VLC media player",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\VideoLAN\\VLC media player.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "\"C:\\Program Files\\VideoLAN\\VLC\\uninstall.exe\"",
+      "display_icon": "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe"
     },
     "uninstall winamp": {
       "name": "Uninstall Winamp",
@@ -863,7 +924,9 @@
     "winamp": {
       "name": "Winamp",
       "path": "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Winamp\\Winamp.lnk",
-      "type": "app"
+      "type": "app",
+      "uninstall": "\"C:\\Program Files (x86)\\Winamp\\UninstWA.exe\"",
+      "display_icon": "C:\\Program Files (x86)\\Winamp\\winamp.exe,0"
     },
     "windows powershell ise x86": {
       "name": "Windows PowerShell ISE (x86)",
@@ -976,7 +1039,7 @@
     "wd black an1500": {
       "name": "WD_BLACK AN1500",
       "path": "",
-      "display_icon": "",
+      "display_icon": "C:\\ProgramData\\Package Cache\\{9c94735f-73fd-4b0f-9ddb-8be7b3cc4681}\\AacSetup.exe,0",
       "uninstall": "MsiExec.exe /I{085E2365-0A70-4230-B664-02D5E4FE7E9C}",
       "type": "app"
     },
@@ -990,14 +1053,14 @@
     "thx v3 apo presets": {
       "name": "THX V3 APO Presets",
       "path": "",
-      "display_icon": "",
+      "display_icon": "C:\\ProgramData\\Package Cache\\{31ed0ee5-c210-41a9-84a1-0c58517b9da5}\\installer.exe,0",
       "uninstall": "MsiExec.exe /X{08C64D08-35A3-40FF-8527-4D73A0F6B42F}",
       "type": "app"
     },
     "microsoft windows desktop runtime 8 0 24 x64": {
       "name": "Microsoft Windows Desktop Runtime - 8.0.24 (x64)",
       "path": "",
-      "display_icon": "",
+      "display_icon": "C:\\ProgramData\\Package Cache\\{a2467e34-8d77-4d67-ae7e-5edbbafbeb16}\\windowsdesktop-runtime-8.0.24-win-x64.exe,0",
       "uninstall": "MsiExec.exe /X{0E6ACF40-9CC5-4B9E-96DE-AC039380D70D}",
       "type": "app"
     },
@@ -1060,21 +1123,21 @@
     "ene external device hal": {
       "name": "ENE_External_Device_HAL",
       "path": "",
-      "display_icon": "",
+      "display_icon": "C:\\ProgramData\\Package Cache\\{5d3c3229-f8ae-4c6c-9db7-7231adc1ff08}\\AacSetup.exe,0",
       "uninstall": "MsiExec.exe /I{2B8E611F-0B51-4FAC-87BB-AF50D82E7DDA}",
       "type": "app"
     },
     "verbatim surefiregaming product": {
       "name": "Verbatim_SureFireGaming_Product",
       "path": "",
-      "display_icon": "",
+      "display_icon": "C:\\ProgramData\\Package Cache\\{d601832a-0d94-46ce-9b19-78e8a5887313}\\AacSetup.exe,0",
       "uninstall": "MsiExec.exe /I{35CB65C6-A7E3-4EE7-AD40-738D70A72164}",
       "type": "app"
     },
     "ene ehd m2 hal": {
       "name": "ENE_EHD_M2_HAL",
       "path": "",
-      "display_icon": "",
+      "display_icon": "C:\\ProgramData\\Package Cache\\{6a0e18d7-c33b-4c8c-aa31-4beedf5956c6}\\AacSetup.exe,0",
       "uninstall": "MsiExec.exe /I{37A48B7F-D4EA-4863-844E-A284E2AA3C5D}",
       "type": "app"
     },
@@ -1144,7 +1207,7 @@
     "intel r chipset device software": {
       "name": "Intel(R) Chipset Device Software",
       "path": "",
-      "display_icon": "",
+      "display_icon": "C:\\ProgramData\\Package Cache\\{9b79ab4c-1596-44ee-84e2-a2001f7af089}\\SetupChipset.exe,0",
       "uninstall": "MsiExec.exe /X{89D00C61-DC40-4846-B938-E2E6158EDAAA}",
       "type": "app"
     },
@@ -1186,7 +1249,7 @@
     "thx spatial audio usb 1532 0555": {
       "name": "THX Spatial Audio USB 1532-0555",
       "path": "",
-      "display_icon": "",
+      "display_icon": "C:\\ProgramData\\Package Cache\\{F7FCB3A2-02A8-4A3B-B2DD-A73750F46202}\\wixbs.exe,0",
       "uninstall": "MsiExec.exe /I{99D19BA2-2ED0-4C90-9B7A-2A041516A43D}",
       "type": "app"
     },
@@ -1214,14 +1277,14 @@
     "ene mousepad hal": {
       "name": "ENE_MousePad_HAL",
       "path": "",
-      "display_icon": "",
+      "display_icon": "C:\\ProgramData\\Package Cache\\{c2c794a4-7986-4c45-884d-d4ca43b88df9}\\AacSetup.exe,0",
       "uninstall": "MsiExec.exe /I{9E97178A-ADB8-4778-BE60-7E28E2A72721}",
       "type": "app"
     },
     "ene video capture box hal": {
       "name": "ENE Video Capture Box HAL",
       "path": "",
-      "display_icon": "",
+      "display_icon": "C:\\ProgramData\\Package Cache\\{974259bf-3ed1-4cd6-9ed1-40c7f601a786}\\AacSetup.exe,0",
       "uninstall": "MsiExec.exe /I{A096611D-BA11-4A1A-8D09-0A0462D7C8F2}",
       "type": "app"
     },
@@ -1246,9 +1309,9 @@
       "uninstall": "MsiExec.exe /I{AECD4ED0-8A3B-41E9-92D1-6BEE0374CCAF}",
       "type": "app"
     },
-    "nvidia controlador de graficos 616 64": {
-      "name": "NVIDIA Controlador de gráficos 616.64",
-      "path": "C:\\Program Files\\NVIDIA Corporation\\Installer2\\Display.Driver.{FAB74CBB-E632-4AF8-9A38-BD6E7D8AE8BB}",
+    "nvidia controlador de graficos 616 92": {
+      "name": "NVIDIA Controlador de gráficos 616.92",
+      "path": "C:\\Program Files\\NVIDIA Corporation\\Installer2\\Display.Driver.{B58C7CBD-264A-48C6-8973-CE4910951160}",
       "display_icon": "C:\\Program Files\\NVIDIA Corporation\\Installer2\\InstallerCore\\NVI2.dll,0",
       "uninstall": "\"C:\\WINDOWS\\SysWOW64\\RunDll32.EXE\" \"C:\\Program Files\\NVIDIA Corporation\\Installer2\\InstallerCore\\NVI2.DLL\",UninstallPackage Display.Driver",
       "type": "app"
@@ -1297,7 +1360,7 @@
     },
     "nvidia controlador de audio hd 1 4 6 3": {
       "name": "NVIDIA Controlador de audio HD 1.4.6.3",
-      "path": "C:\\Program Files\\NVIDIA Corporation\\Installer2\\HDAudio.Driver.{E9165C2E-0BC7-470D-A9EF-59DBFC994AFB}",
+      "path": "C:\\Program Files\\NVIDIA Corporation\\Installer2\\HDAudio.Driver.{6ECF4423-ED4D-4C26-8A5D-345DB27B3B98}",
       "display_icon": "C:\\Program Files\\NVIDIA Corporation\\Installer2\\InstallerCore\\NVI2.dll,0",
       "uninstall": "\"C:\\WINDOWS\\SysWOW64\\RunDll32.EXE\" \"C:\\Program Files\\NVIDIA Corporation\\Installer2\\InstallerCore\\NVI2.DLL\",UninstallPackage HDAudio.Driver",
       "type": "app"
@@ -1389,7 +1452,7 @@
     "wd black d50": {
       "name": "WD_BLACK D50",
       "path": "",
-      "display_icon": "",
+      "display_icon": "C:\\ProgramData\\Package Cache\\{a1d1ba00-92b7-4a99-8ebd-65b25c0e9e44}\\AacSetup.exe,0",
       "uninstall": "MsiExec.exe /I{BDE43F26-5917-44F8-B86A-F1D9A6B80B32}",
       "type": "app"
     },
@@ -1424,7 +1487,7 @@
     "ene x aic hal": {
       "name": "ENE_X_AIC_HAL",
       "path": "",
-      "display_icon": "",
+      "display_icon": "C:\\ProgramData\\Package Cache\\{c662a481-d76a-4188-95d2-6eb4ffd55542}\\AacSetup.exe,0",
       "uninstall": "MsiExec.exe /I{CF703694-01C6-4062-B797-84DB215662BC}",
       "type": "app"
     },
@@ -1445,7 +1508,7 @@
     "microsoft windows desktop runtime 10 0 1 x64": {
       "name": "Microsoft Windows Desktop Runtime - 10.0.1 (x64)",
       "path": "",
-      "display_icon": "",
+      "display_icon": "C:\\ProgramData\\Package Cache\\{F14BFF87-249C-40A3-8DCD-EC608C3FF361}\\windowsdesktop-runtime-10.0.1-win-x64.exe,0",
       "uninstall": "MsiExec.exe /X{E83798A0-54B2-4BF4-AFD2-53F5FD087C95}",
       "type": "app"
     },
@@ -1459,7 +1522,7 @@
     "wd p40 game drive": {
       "name": "WD P40 Game Drive",
       "path": "",
-      "display_icon": "",
+      "display_icon": "C:\\ProgramData\\Package Cache\\{72b1a866-fc31-4381-bff3-fa6cd8823777}\\AacSetup.exe,0",
       "uninstall": "MsiExec.exe /I{EE55DBAE-ECDD-4ADD-AAB5-23DE848B0996}",
       "type": "app"
     },
@@ -1766,9 +1829,9 @@
     },
     "roblox player for junel": {
       "name": "Roblox Player for junel",
-      "path": "C:\\Users\\junel\\AppData\\Local\\Roblox\\Versions\\version-e7d81637d42c4b23",
-      "display_icon": "C:\\Users\\junel\\AppData\\Local\\Roblox\\Versions\\version-e7d81637d42c4b23\\RobloxPlayerInstaller.exe,0",
-      "uninstall": "\"C:\\Users\\junel\\AppData\\Local\\Roblox\\Versions\\version-e7d81637d42c4b23\\RobloxPlayerInstaller.exe\" -uninstall",
+      "path": "C:\\Users\\junel\\AppData\\Local\\Roblox\\Versions\\version-c5aecda2245e4fae",
+      "display_icon": "C:\\Users\\junel\\AppData\\Local\\Roblox\\Versions\\version-c5aecda2245e4fae\\RobloxPlayerInstaller.exe,0",
+      "uninstall": "\"C:\\Users\\junel\\AppData\\Local\\Roblox\\Versions\\version-c5aecda2245e4fae\\RobloxPlayerInstaller.exe\" -uninstall",
       "type": "game"
     },
     "roblox studio for junel": {

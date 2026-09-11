@@ -239,11 +239,46 @@
             "time": "2026-08-21T20:53:32",
             "user": "cierra Google Chrome cierra",
             "assistant": "Cerrando chrome."
+        },
+        {
+            "time": "2026-09-09T23:31:44",
+            "user": "QUIEN FUE JUAN PABLO DUARTE?",
+            "assistant": "Según Juan Pablo Duarte - Wikipedia, la enciclopedia libre: 4 days ago - Juan Pablo Duarte y Díez (January 26, 1813 – July 15, 1876) was a Dominican military leader, writer, activist, and nationalist politician who was the foremost of the Founding Fathers of the Dominican Republic and bears the title of Father of the Nation."
+        },
+        {
+            "time": "2026-09-09T23:32:07",
+            "user": "BUSCA EN GOOGLE QUIEN FUE JUAN RAMON GOMEZ DIAZ",
+            "assistant": "Según Biografía de Juan Ramón Gómez Díaz: El magnate de los medios en República Dominicana: May 12, 2025 - Juan Ramón Gómez Díaz es un reconocido empresario y comunicador dominicano, ampliamente considerado como uno de los principales impulsores del desarrollo mediático en la República Dominicana."
+        },
+        {
+            "time": "2026-09-09T23:32:49",
+            "user": "WINAMP NUMERO 33",
+            "assistant": "Abriendo Winamp."
+        },
+        {
+            "time": "2026-09-09T23:35:25",
+            "user": "WINAMP ES EL REPRODUCTOR",
+            "assistant": "Todavía no sé hacer eso."
+        },
+        {
+            "time": "2026-09-09T23:38:31",
+            "user": "ACTUALIZA LA LISTA DE PROGRAMAS",
+            "assistant": "Lista actualizada. Encontré 309 programas."
+        },
+        {
+            "time": "2026-09-10T22:35:14",
+            "user": "eliminala",
+            "assistant": "Encontré Manual, pero Windows no proporcionó un desinstalador registrado."
+        },
+        {
+            "time": "2026-09-10T22:35:14",
+            "user": "eliminala",
+            "assistant": "Encontré Manual, pero Windows no proporcionó un desinstalador registrado."
         }
     ],
     "context": {
-        "last_target": "busca actualizaciones",
-        "last_intent": "WEB_SEARCH",
-        "last_command": "busca actualizaciones"
+        "last_target": "eliminala",
+        "last_intent": "UNINSTALL_PROGRAM",
+        "last_command": "eliminala"
     }
 }

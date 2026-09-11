@@ -36,10 +36,11 @@ class Router:
             confidence = 1.0
 
         print(f"\nROUTER: {intent}\nTARGET: {target}\nCONFIDENCE: {confidence}")
-        if confidence < 0.50 and intent not in {"UNINSTALL_PROGRAM"}:
+        if confidence < 0.50 and intent not in {"UNINSTALL_PROGRAM", "DELETE_FOLDER"}:
             return "No estoy suficientemente segura de lo que quieres."
 
         if intent == "OPEN_PROGRAM": return self.windows.open_program(target)
+        if intent == "INSTALL_PROGRAM": return self.windows.install_program(target)
         if intent == "CLOSE_PROGRAM": return self.windows.close_program(target)
         if intent == "UNINSTALL_PROGRAM":
             confirmed = bool(params.get("confirmed", False)) or bool(re.search(r"\b(confirmo|confirmado|si|sí|hazlo|adelante)\b", command))
@@ -51,6 +52,10 @@ class Router:
         if intent == "REFRESH_PROGRAMS": return self.windows.refresh_programs()
         if intent == "OPEN_FILE": return self.windows.open_file(target)
         if intent == "OPEN_FOLDER": return self._open_folder(target)
+        if intent == "CREATE_FOLDER": return self.windows.create_folder(target)
+        if intent == "DELETE_FOLDER":
+            confirmed = bool(params.get("confirmed", False)) or bool(re.search(r"\b(confirmo|confirmado|si|sí|hazlo|adelante)\b", command))
+            return self.windows.delete_folder(target, confirmed=confirmed)
         if intent == "OPEN_URL": return self.windows.open_url(target)
         if intent in {"SEARCH_WEB", "SEARCH_GOOGLE", "WEB_SEARCH"}: return self.answer_web_search(target)
         if intent in {"SEARCH_YOUTUBE", "PLAY_YOUTUBE", "PLAY_MEDIA"}: return self.search_youtube(target)
