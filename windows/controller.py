@@ -203,13 +203,31 @@ class WindowsController:
                                     if not name:
                                         continue
                                     clean = self.normalize_text(name)
-                                    if clean in found:
-                                        continue
+
                                     def value(field):
                                         try:
                                             return winreg.QueryValueEx(sub, field)[0] or ""
                                         except Exception:
                                             return ""
+
+                                    if clean in found:
+                                        # Ya existe (normalmente detectado como
+                                        # acceso directo del menú Inicio, que NO
+                                        # trae datos de desinstalación). Se
+                                        # completan los campos que falten en
+                                        # vez de descartar la información real
+                                        # del registro — esto es lo que antes
+                                        # rompía "desinstala X" para programas
+                                        # como Discord.
+                                        existing = found[clean]
+                                        if not existing.get("uninstall"):
+                                            existing["uninstall"] = value("UninstallString")
+                                        if not existing.get("display_icon"):
+                                            existing["display_icon"] = value("DisplayIcon")
+                                        if not existing.get("path"):
+                                            existing["path"] = value("InstallLocation")
+                                        continue
+
                                     found[clean] = {
                                         "name": name,
                                         "path": value("InstallLocation"),
@@ -583,6 +601,95 @@ class WindowsController:
             return f"No pude iniciar la desinstalación de {name}."
 
     # ------------------------------------------------------------------
+    # INSTALAR PROGRAMAS (vía winget — catálogo oficial de Microsoft)
+    #
+    # Se usa winget en vez de descargar instaladores de sitios web
+    # directamente: winget ya verifica que cada paquete venga de su
+    # editor oficial (Discord, VideoLAN/VLC, Google, etc.) y sabe
+    # instalar cada uno en modo silencioso sin que tengamos que
+    # adivinar URLs de descarga que pueden cambiar en cualquier
+    # momento.
+    # ------------------------------------------------------------------
+    def _winget_available(self):
+        try:
+            result = subprocess.run(
+                ["winget", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def install_program(self, name):
+        name = str(name).strip().strip('"\'')
+
+        if not name:
+            return "¿Qué programa quieres que instale?"
+
+        if not self._winget_available():
+            return (
+                "No encontré 'winget' en este equipo. Instálalo desde "
+                "la Microsoft Store buscando 'App Installer' e inténtalo de nuevo."
+            )
+
+        print(f"INSTALANDO CON WINGET: {name}")
+
+        try:
+            result = subprocess.run(
+                [
+                    "winget", "install",
+                    "--name", name,
+                    "--accept-package-agreements",
+                    "--accept-source-agreements",
+                    "--silent",
+                    "--disable-interactivity",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+
+            output = (result.stdout or "") + (result.stderr or "")
+            print("SALIDA WINGET:", output)
+
+            if result.returncode == 0:
+                # Fuerza que el próximo "abre X" reescanee los
+                # programas, para que encuentre lo recién instalado
+                # sin esperar el enfriamiento normal de 5 minutos.
+                self._last_scan_time = 0
+                return f"Instalé {name} correctamente."
+
+            lowered = output.lower()
+
+            if "no package found" in lowered or "no se encontr" in lowered:
+                return (
+                    f"No encontré {name} en el catálogo oficial de "
+                    "aplicaciones. Revisa el nombre exacto."
+                )
+
+            if "multiple packages found" in lowered or "varios paquetes" in lowered:
+                return (
+                    f"Encontré varias aplicaciones parecidas a {name}. "
+                    "Sé más específico con el nombre."
+                )
+
+            return (
+                f"No pude instalar {name}. Es posible que Windows haya "
+                "pedido tu confirmación en una ventana aparte — revisa la pantalla."
+            )
+
+        except subprocess.TimeoutExpired:
+            return (
+                f"La instalación de {name} está tardando demasiado. "
+                "Revisa si Windows pidió alguna confirmación en pantalla."
+            )
+        except Exception as error:
+            print("ERROR INSTALANDO:", error)
+            return f"Ocurrió un error instalando {name}."
+
+    # ------------------------------------------------------------------
     # CONTROL DEL SISTEMA
     # ------------------------------------------------------------------
     def sleep_pc(self):
@@ -691,6 +798,161 @@ class WindowsController:
             return f"Abriendo {target}."
         except Exception:
             return f"No pude abrir {target}."
+
+    # ------------------------------------------------------------------
+    # CREAR CARPETA
+    # ------------------------------------------------------------------
+
+    # Nombres de valor dentro de esta clave del registro, que apuntan
+    # a la ubicación REAL de cada carpeta — importante porque con
+    # OneDrive activado (muy común hoy en día), "Escritorio",
+    # "Documentos", etc. suelen estar REDIRIGIDOS dentro de
+    # OneDrive (ej. C:\Users\tú\OneDrive\Desktop) en vez de la ruta
+    # clásica C:\Users\tú\Desktop. Si se asume la ruta clásica sin
+    # verificar, la carpeta se crea en un lugar que ya nadie mira.
+    SHELL_FOLDERS_KEY = (
+        r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"
+    )
+
+    FOLDER_LOCATIONS = {
+        # nombre hablado: (nombre de valor en el registro, ruta de respaldo)
+        "escritorio": ("Desktop", r"%USERPROFILE%\Desktop"),
+        "documentos": ("Personal", r"%USERPROFILE%\Documents"),
+        "descargas": ("{374DE290-123F-4565-9164-39C4925E467B}", r"%USERPROFILE%\Downloads"),
+        "imagenes": ("My Pictures", r"%USERPROFILE%\Pictures"),
+        "imágenes": ("My Pictures", r"%USERPROFILE%\Pictures"),
+        "musica": ("My Music", r"%USERPROFILE%\Music"),
+        "música": ("My Music", r"%USERPROFILE%\Music"),
+        "videos": ("My Video", r"%USERPROFILE%\Videos"),
+        "vídeos": ("My Video", r"%USERPROFILE%\Videos"),
+    }
+
+    def _resolve_shell_folder(self, registry_value_name, fallback_path):
+        if winreg:
+            try:
+                with winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER, self.SHELL_FOLDERS_KEY
+                ) as key:
+                    value, _ = winreg.QueryValueEx(key, registry_value_name)
+                    resolved = os.path.expandvars(value)
+                    if resolved and os.path.isdir(resolved):
+                        return resolved
+            except Exception as error:
+                print("ERROR LEYENDO CARPETA DEL REGISTRO:", error)
+
+        return os.path.expandvars(fallback_path)
+
+    def _find_named_folder(self, name, location=None):
+        """
+        Resuelve la ruta de una carpeta por nombre. Si se da una
+        ubicación, busca solo ahí. Si no, busca primero en el
+        escritorio (por defecto) y si no está, revisa las demás
+        ubicaciones conocidas, para no fallar solo porque no
+        recuerdas dónde la creaste.
+
+        Devuelve (path, location_key) o (None, None) si no la
+        encuentra en ningún lado.
+        """
+
+        if location:
+            location_key = str(location).strip().lower()
+            registry_name, fallback_path = self.FOLDER_LOCATIONS.get(
+                location_key, self.FOLDER_LOCATIONS["escritorio"]
+            )
+            base = self._resolve_shell_folder(registry_name, fallback_path)
+            path = os.path.join(base, name)
+            return (path, location_key) if os.path.isdir(path) else (None, None)
+
+        # Sin ubicación explícita: escritorio primero (comportamiento
+        # por defecto de create_folder), luego las demás.
+        ordered_keys = ["escritorio"] + [
+            k for k in self.FOLDER_LOCATIONS if k != "escritorio"
+        ]
+
+        for location_key in ordered_keys:
+            registry_name, fallback_path = self.FOLDER_LOCATIONS[location_key]
+            base = self._resolve_shell_folder(registry_name, fallback_path)
+            path = os.path.join(base, name)
+            if os.path.isdir(path):
+                return path, location_key
+
+        return None, None
+
+    def create_folder(self, name, location=None):
+        name = str(name).strip().strip('"\'')
+
+        if not name:
+            return "Necesito un nombre para la carpeta."
+
+        location_key = str(location or "escritorio").strip().lower()
+        registry_name, fallback_path = self.FOLDER_LOCATIONS.get(
+            location_key, self.FOLDER_LOCATIONS["escritorio"]
+        )
+
+        base = self._resolve_shell_folder(registry_name, fallback_path)
+        path = os.path.join(base, name)
+
+        if os.path.isdir(path):
+            try:
+                os.startfile(path)
+            except Exception:
+                pass
+            return f"Ya existe una carpeta llamada {name} ahí. La abrí para que la veas."
+
+        try:
+            os.makedirs(path, exist_ok=False)
+        except Exception as error:
+            print("ERROR CREANDO CARPETA:", error)
+            return f"No pude crear la carpeta {name}."
+
+        label = location_key if location_key in self.FOLDER_LOCATIONS else "escritorio"
+
+        # Se abre automáticamente para que quede clarísimo dónde
+        # quedó, sin depender de que el usuario adivine la ruta.
+        try:
+            os.startfile(path)
+        except Exception as error:
+            print("ERROR ABRIENDO CARPETA CREADA:", error)
+
+        return f"Creé la carpeta {name} en {label} y la abrí."
+
+    # ------------------------------------------------------------------
+    # BORRAR CARPETA (a la papelera de reciclaje, NUNCA borrado
+    # permanente directo — un error de reconocimiento de voz no debe
+    # poder destruir algo sin posibilidad de recuperarlo)
+    # ------------------------------------------------------------------
+    def delete_folder(self, name, location=None, confirmed=False):
+        name = str(name).strip().strip('"\'')
+
+        if not name:
+            return "Necesito el nombre de la carpeta que quieres borrar."
+
+        path, found_location = self._find_named_folder(name, location)
+
+        if not path:
+            where = f" en {location}" if location else ""
+            return f"No encontré una carpeta llamada {name}{where}."
+
+        if not confirmed:
+            return (
+                f"CONFIRMATION_REQUIRED: ¿Quieres enviar la carpeta "
+                f"{name} (en {found_location}) a la papelera de reciclaje?"
+            )
+
+        try:
+            from send2trash import send2trash
+        except ImportError:
+            return (
+                "Necesito el paquete Send2Trash para borrar de forma segura. "
+                "Instálalo con: pip install Send2Trash"
+            )
+
+        try:
+            send2trash(path)
+            return f"Envié la carpeta {name} a la papelera de reciclaje."
+        except Exception as error:
+            print("ERROR BORRANDO CARPETA:", error)
+            return f"No pude borrar la carpeta {name}."
 
     def get_processes(self):
         if not psutil:

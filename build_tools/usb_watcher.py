@@ -14,7 +14,7 @@ import ctypes
 VOLUME_LABEL = "CORTANA_USB"
 
 # Ruta del ejecutable DENTRO del pendrive, relativa a la raíz de la unidad.
-EXE_RELATIVE_PATH = r"Cortana\dist\Cortana.exe"
+EXE_RELATIVE_PATH = r"CORTANA 3.0\dist\Cortana.exe"
 
 POLL_SECONDS = 3
 

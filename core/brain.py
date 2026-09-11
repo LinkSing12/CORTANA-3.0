@@ -201,12 +201,12 @@ class Brain:
         # =====================================================
         valid_intents = {
             # Programas
-            "OPEN_PROGRAM", "CLOSE_PROGRAM", "UNINSTALL_PROGRAM",
+            "OPEN_PROGRAM", "CLOSE_PROGRAM", "UNINSTALL_PROGRAM", "INSTALL_PROGRAM",
             "LIST_PROGRAMS", "LIST_RUNNING_PROGRAMS",
             "CHECK_PROGRAM", "PROGRAM_INFO", "REFRESH_PROGRAMS",
 
             # Archivos / carpetas / navegación
-            "OPEN_FILE", "OPEN_FOLDER", "OPEN_URL",
+            "OPEN_FILE", "OPEN_FOLDER", "CREATE_FOLDER", "DELETE_FOLDER", "OPEN_URL",
 
             # Búsqueda e internet
             "SEARCH_WEB", "SEARCH_GOOGLE", "WEB_SEARCH",
@@ -389,8 +389,38 @@ Para preguntas ambiguas, no inventes la respuesta: usa WEB_SEARCH con la pregunt
 
 Si no puedes determinar que quiere y no parece una pregunta factual: UNKNOWN.
 
-CONTEXTO ANTERIOR:
-{json.dumps(context, ensure_ascii=False)}
+=====================================================
+PREGUNTAS DE SEGUIMIENTO (MUY IMPORTANTE)
+=====================================================
+
+Debajo tienes el HISTORIAL RECIENTE de la conversación (lo último que
+el usuario preguntó y lo que Cortana respondió). Si la pregunta ACTUAL
+del usuario depende de algo mencionado ahí (usa palabras como "él",
+"ella", "eso", "ahí", "y", o simplemente no repite el tema del que se
+viene hablando), usa el historial para entender a qué se refiere.
+
+Si el intent resultante es WEB_SEARCH, el "target" DEBE ser una
+pregunta COMPLETA que tenga sentido por sí sola, SIN necesitar el
+historial para entenderse — resuelve tú mismo cualquier referencia
+ahí mismo, dentro del target.
+
+Ejemplo:
+HISTORIAL RECIENTE:
+Usuario: Quién fue Juan Pablo Duarte
+Cortana: Juan Pablo Duarte fue uno de los padres de la patria...
+
+Usuario actual: Y cuándo murió?
+{{"intent":"WEB_SEARCH","target":"Cuándo murió Juan Pablo Duarte","confidence":0.99}}
+
+Si el HISTORIAL RECIENTE dice "(sin historial reciente)" o la pregunta
+actual ya es autónoma y no depende de nada anterior, ignora el
+historial y trata la pregunta normalmente.
+
+HISTORIAL RECIENTE:
+{context.get('recent_history', '(sin historial reciente)')}
+
+CONTEXTO ANTERIOR (última orden ejecutada):
+{json.dumps({k: v for k, v in context.items() if k != 'recent_history'}, ensure_ascii=False)}
 
 USUARIO:
 {text}
