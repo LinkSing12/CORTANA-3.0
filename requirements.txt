@@ -13,9 +13,20 @@ PyAudio
 requests
 ddgs
 
+# --- WhatsApp Web ---
+selenium
+webdriver-manager
+
+# --- Icono de bandeja ---
+pystray
+Pillow
+
 # --- Empaquetado a .exe / watcher del pendrive ---
 pyinstaller
 pywin32
+
+# --- Borrado seguro (papelera de reciclaje) ---
+Send2Trash
 
 # Notas de instalación en Windows:
 # 1) pip install -r requirements.txt
@@ -27,4 +38,4 @@ pywin32
 #    aparte (https://github.com/UB-Mannheim/tesseract/wiki) solo si
 #    quieres que el click en "Jugar/Play" funcione por OCR además de UIA.
 # 4) Cortana usa un modelo local via Ollama (http://localhost:11434).
-#    Instala Ollama y baja el modelo: ollama pull qwen3:14b
+#    Instala Ollama y baja el modelo: ollama pull qwen2.5:7b

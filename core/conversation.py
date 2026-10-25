@@ -91,12 +91,12 @@ class Conversation:
             # =================================================
 
             "quien eres": [
-                "Soy CORTANA, tu asistente local.",
-                "Soy CORTANA, una asistente de inteligencia artificial local."
+                "Soy Eco, tu asistente local.",
+                "Soy Eco, una asistente de inteligencia artificial local."
             ],
 
             "que eres": [
-                "Soy CORTANA, tu asistente local."
+                "Soy Eco, tu asistente local."
             ],
 
             # =================================================
@@ -237,7 +237,7 @@ class Conversation:
                 )
 
         # =====================================================
-        # GRACIAS CON CORTANA
+        # GRACIAS CON ECO
         # =====================================================
 
         if (

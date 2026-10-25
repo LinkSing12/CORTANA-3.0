@@ -13,19 +13,24 @@ from memory.learning import Learning
 from windows.controller import WindowsController
 from windows.media import MediaController
 from windows.winamp import WinampController
+from windows.wifi import WifiController
+from windows.bluetooth import BluetoothController
 
 from core.brain import Brain
 from core.router import Router
 from core.learning_brain import LearningBrain
 from core.conversation import Conversation
 from core.updater import Updater
+from core.context_resolver import ContextCommandResolver
+from core.skill_learner import SkillLearner
+from core.whatsapp_client import WhatsAppClient
 
 
-class Cortana:
+class Eco:
 
     def __init__(self):
 
-        self.name = "Cortana"
+        self.name = "Eco"
 
         self.listener = Listener()
         self.speaker = Speaker()
@@ -41,6 +46,8 @@ class Cortana:
 
         self.windows = WindowsController()
         self.media = MediaController()
+        self.wifi = WifiController()
+        self.bluetooth = BluetoothController()
 
         # AJUSTA esta carpeta a donde tengas tu música real si no
         # está en la carpeta "Música" por defecto de Windows.
@@ -50,19 +57,58 @@ class Cortana:
 
         # Guarda la acción destructiva que está esperando confirmación
         # (flujo de dos turnos: "desinstala X" / "borra la carpeta X"
-        # -> Cortana pregunta -> usuario dice "sí" -> se ejecuta).
+        # -> Eco pregunta -> usuario dice "sí" -> se ejecuta).
         # Formato: {"type": "uninstall" | "delete_folder", "target": ...}
         self.pending_confirmation = None
 
+        self.context_resolver = ContextCommandResolver()
+
+        # =====================================================
+        # PALABRA DE ACTIVACIÓN POR VOZ ("eco")
+        #
+        # Eco siempre está escuchando, pero en modo PASIVO
+        # ignora todo lo que no empiece con "eco". Al decir "eco",
+        # se activa por VOICE_ACTIVE_WINDOW_SECONDS: durante ese
+        # tiempo puede darle órdenes seguidas sin repetir "eco".
+        # Si pasa ese tiempo sin una orden nueva, vuelve a pasivo.
+        #
+        # Esto SOLO aplica al canal de voz — escribir en la consola
+        # o en la ventana gráfica sigue funcionando siempre directo,
+        # sin necesitar "eco".
+        # =====================================================
+        # Variantes fonéticas: el reconocimiento de voz en español a
+        # veces transcribe "eco" como "ecko", "esco", "eko", etc.
+        # _strip_wake_word() las acepta todas por igual.
+        self.WAKE_WORD_VARIANTS = (
+            "eco", "ecko", "esco", "eko", "ecco",
+            "hecko", "ehco", "equo", "heco",
+        )
+        self.VOICE_ACTIVE_WINDOW_SECONDS = 30
+        self.voice_active = False
+        self.voice_last_activity = 0.0
+
         self.brain = Brain()
+
+        # Genera y (con confirmación explícita del usuario en un turno
+        # aparte) guarda habilidades nuevas cuando un comando no coincide
+        # con nada conocido. Ver core/skill_learner.py para el flujo de
+        # seguridad de dos pasos (prepare_skill + confirm_and_save).
+        self.skill_learner = SkillLearner(self.brain)
+
+        # El navegador de WhatsApp Web NO se abre aquí — solo la
+        # primera vez que se envíe, lea o borre un mensaje (ver
+        # WhatsAppClient._ensure_driver), para no ralentizar el
+        # arranque normal de Eco.
+        self.whatsapp = WhatsAppClient()
 
         self.router = Router(
             self.windows,
-            self.media
+            self.media,
+            brain=self.brain
         )
 
         # Interfaz gráfica (window.py). Es opcional: si nadie
-        # llama a set_interface(), Cortana sigue funcionando
+        # llama a set_interface(), Eco sigue funcionando
         # 100% por consola/voz igual que antes.
         self.window = None
 
@@ -73,6 +119,13 @@ class Cortana:
     def set_interface(self, window):
 
         self.window = window
+
+        # Conecta la voz con la carita de robot (si la ventana la
+        # tiene) para que la boca se mueva sincronizada con el audio
+        # real. Si window no tiene set_window (una interfaz distinta,
+        # o ninguna), simplemente no pasa nada.
+        if hasattr(self.speaker, "set_window"):
+            self.speaker.set_window(window)
 
     # =========================================================
     # ACTUALIZAR INTERFAZ GRAFICA (si existe)
@@ -119,14 +172,14 @@ class Cortana:
             )
 
     # =========================================================
-    # INICIAR CORTANA
+    # INICIAR ECO
     # =========================================================
 
     def start(self):
 
         print()
         print("=" * 55)
-        print("                 CORTANA 4.0")
+        print("                 ECO 4.0")
         print("                 IA LOCAL")
         print("=" * 55)
         print()
@@ -201,7 +254,7 @@ class Cortana:
             except (KeyboardInterrupt, EOFError):
 
                 print()
-                print("CORTANA CERRADA.")
+                print("ECO CERRADA.")
                 break
 
             if not text:
@@ -212,7 +265,7 @@ class Cortana:
             ):
 
                 print(
-                    "CORTANA: Hasta luego."
+                    "ECO: Hasta luego."
                 )
 
                 break
@@ -254,12 +307,84 @@ class Cortana:
                 text
             )
 
-            command = self.remove_wake_word(
-                text
-            )
+            # -------------------------------------------------
+            # ¿Se venció la ventana de 30s sin recibir órdenes?
+            # Se revisa ANTES de intentar usar lo que se acaba de
+            # escuchar, porque si ya pasó el tiempo, esto que se
+            # acaba de oír necesita "eco" de nuevo para contar.
+            # -------------------------------------------------
 
-            if not command:
+            if self.voice_active and (
+                time.time() - self.voice_last_activity
+                > self.VOICE_ACTIVE_WINDOW_SECONDS
+            ):
+
+                self.voice_active = False
+
+                print(
+                    "(Eco volvió a modo pasivo: "
+                    "pasaron 30s sin órdenes. Di 'eco' para reactivarla.)"
+                )
+
+                self._update_window(
+                    status="● PASIVA (di 'eco')"
+                )
+
+                if self.window:
+                    try:
+                        self.window.hide()
+                    except Exception:
+                        pass
+
+            command = None
+
+            if self.voice_active:
+
+                # Ya está activa: todo lo que diga cuenta como
+                # orden directa, sin necesitar repetir "eco".
+                command = text
+
+            else:
+
+                remainder = self._strip_wake_word(text)
+
+                if remainder is not None:
+
+                    self.voice_active = True
+
+                    if self.window:
+                        try:
+                            self.window.show()
+                        except Exception:
+                            pass
+
+                    self._update_window(
+                        status="● ACTIVA (escuchando)"
+                    )
+
+                    if remainder:
+
+                        command = remainder
+
+                    else:
+
+                        # Dijo solo "eco", sin orden todavía:
+                        # confirma que está escuchando y espera
+                        # la siguiente frase, sin procesar nada aún.
+                        try:
+                            self.speaker.speak("Dime.")
+                        except Exception:
+                            pass
+
+                else:
+
+                    # Modo pasivo y no dijo "eco": se ignora todo.
+                    continue
+
+            if command is None:
                 continue
+
+            self.voice_last_activity = time.time()
 
             if self.is_exit_command(
                 command.lower()
@@ -274,56 +399,95 @@ class Cortana:
 
                 print()
                 print(
-                    "CORTANA CERRADA (por voz)."
+                    "ECO CERRADA (por voz)."
                 )
 
                 os._exit(0)
 
             self.respond(command)
 
+            # Renueva la ventana de 30s tras procesar la orden.
+            self.voice_last_activity = time.time()
+
     # =========================================================
     # PALABRA DE ACTIVACIÓN
     # =========================================================
 
-    def remove_wake_word(self, text):
+    def _strip_wake_word(self, text):
+        """
+        Si el texto empieza con alguna variante de la palabra de
+        activación ("eco", "ecko", "esco", etc. — ver
+        WAKE_WORD_VARIANTS), devuelve lo que queda después (puede ser
+        cadena vacía si solo dijo la palabra de activación). Si NO
+        empieza con ninguna variante, devuelve None.
+        """
 
-        text = text.strip()
-        lower = text.lower()
+        alternativas = "|".join(
+            re.escape(variante) for variante in self.WAKE_WORD_VARIANTS
+        )
 
-        wake_words = [
-            "cortana",
-            "cortana.",
-            "cortana,",
-            "cortana:"
-        ]
+        match = re.match(
+            rf"^\s*(?:{alternativas})\b[\s,.:!¡]*",
+            text,
+            re.IGNORECASE
+        )
 
-        for word in wake_words:
+        if not match:
+            return None
 
-            if lower.startswith(word):
-
-                text = text[
-                    len(word):
-                ].strip()
-
-                break
-
-        return text
+        return text[match.end():].strip()
 
     # =========================================================
-    # COMANDOS PARA CERRAR CORTANA
+    # DETECTAR PETICIÓN EXPLÍCITA DE APRENDER UNA HABILIDAD NUEVA
+    # (generar código), a diferencia de aprender un ALIAS de un
+    # intent ya existente (eso lo maneja LearningBrain más arriba).
+    # =========================================================
+
+    LEARN_SKILL_TRIGGERS = (
+        "aprende a ", "aprende como ", "aprende cómo ",
+        "enséñame a ", "enseñame a ",
+        "puedes aprender a ", "quiero que aprendas a ",
+    )
+
+    def _extract_skill_description(self, text):
+        """
+        Si el texto empieza con una frase explícita para pedir una
+        habilidad nueva, devuelve la descripción (sin la frase
+        disparadora). Si no, devuelve None — así un UNKNOWN cualquiera
+        (por ejemplo, ruido mal transcrito por voz) NO dispara la
+        generación de código.
+        """
+
+        stripped = text.strip()
+        lowered = stripped.lower()
+
+        for trigger in self.LEARN_SKILL_TRIGGERS:
+            if lowered.startswith(trigger):
+                description = stripped[len(trigger):].strip()
+                return description or None
+
+        return None
+
+    # =========================================================
+    # COMANDOS PARA CERRAR ECO
     # =========================================================
 
     def is_exit_command(self, text):
 
         commands = [
             "salir",
-            "cerrar cortana",
-            "apaga cortana",
             "terminar",
             "termina",
             "apagar asistente",
             "apaga el asistente"
         ]
+
+        # "cerrar eco" / "apaga eco", incluyendo las variantes fonéticas
+        # con las que el micrófono suele transcribir el nombre (ver
+        # WAKE_WORD_VARIANTS).
+        for nombre in self.WAKE_WORD_VARIANTS:
+            commands.append(f"cerrar {nombre}")
+            commands.append(f"apaga {nombre}")
 
         return text in commands
 
@@ -334,6 +498,15 @@ class Cortana:
     # =========================================================
     # WINAMP: DETECCIÓN DE COMANDOS
     # =========================================================
+
+    # El reconocimiento de voz confunde seguido "winamp" con "windows"
+    # (suenan parecido). Aceptar "windows" aquí es seguro PORQUE solo
+    # se usa dentro de la frase "reproduce/pon/toca X en ___" — nadie
+    # dice eso de verdad refiriéndose al sistema operativo, así que no
+    # choca con comandos reales sobre Windows en el resto del proyecto.
+    WINAMP_MENTION = (
+        r"(?:winamp|windows|wiiamp|wynamp|guinamp|uinamp|vinamp|winan)"
+    )
 
     def _extract_winamp_target(self, command):
         """
@@ -352,9 +525,9 @@ class Cortana:
 
         patterns = [
             # "abre winamp y reproduce X" / "abre winamp reproduce X"
-            rf"^{FILLER}abre\s+winamp\s+(?:y\s+)?{VERB}\s+(.+)$",
+            rf"^{FILLER}abre\s+{self.WINAMP_MENTION}\s+(?:y\s+)?{VERB}\s+(.+)$",
             # "reproduce X en winamp"
-            rf"^{FILLER}{VERB}\s+(.+?)\s+en\s+winamp$",
+            rf"^{FILLER}{VERB}\s+(.+?)\s+en\s+{self.WINAMP_MENTION}$",
         ]
 
         for pattern in patterns:
@@ -374,16 +547,27 @@ class Cortana:
         return None
 
     def _parse_winamp_number_or_name(self, text):
+        """
+        Si el texto es, en el fondo, solo un NÚMERO acompañado de
+        relleno ("el", "la", "canción", "música", "pista", "tema",
+        "número" — en CUALQUIER orden), se interpreta como pedido de
+        reproducir esa posición en Winamp. Antes solo reconocía
+        "canción número X"; con solo decir "música número X" en vez de
+        "canción número X" ya no coincidía, y la frase completa se
+        trataba como nombre de canción a buscar en YouTube.
+        """
 
         text = text.strip()
 
-        number_match = re.match(
-            r"^(?:el\s+|la\s+)?(?:canci[oó]n\s+)?(?:n[uú]mero\s+)?(\d+)$",
-            text
+        cleaned = re.sub(
+            r"\b(?:el|la|canci[oó]n|m[uú]sica|pista|tema|n[uú]mero)\b",
+            " ",
+            text,
         )
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
-        if number_match:
-            return ("number", number_match.group(1))
+        if re.fullmatch(r"\d+", cleaned):
+            return ("number", cleaned)
 
         return ("name", text)
 
@@ -510,17 +694,65 @@ class Cortana:
 
     def handle_local_command(self, command):
 
+        # Se guarda tal cual, ANTES de pasar a minúsculas, porque las
+        # contraseñas de Wi-Fi son sensibles a mayúsculas/minúsculas
+        # (ver el bloque de confirmación "wifi_password" más abajo).
+        original_command = str(command).strip()
+
         command = command.lower().strip()
 
         # =====================================================
         # CONFIRMACIÓN DE DESINSTALACIÓN PENDIENTE
-        # Si Cortana ya preguntó "¿quieres desinstalar X?", esta
+        # Si Eco ya preguntó "¿quieres desinstalar X?", esta
         # respuesta corta confirma (o cancela) esa acción específica.
         # Solo aplica si hay algo realmente pendiente, para no
         # interceptar un "sí" normal en otro contexto.
         # =====================================================
 
         if self.pending_confirmation:
+
+            # Caso especial: no es un sí/no, es "dime la contraseña".
+            # Cualquier cosa que diga el usuario (que no sea cancelar)
+            # se toma TAL CUAL como la contraseña — por eso se revisa
+            # antes que el resto, y por eso se usa original_command
+            # (con mayúsculas/minúsculas reales) en vez de command.
+            if self.pending_confirmation["type"] == "wifi_password":
+
+                pending = self.pending_confirmation
+
+                cancel_words = {
+                    "no", "cancela", "cancelar", "mejor no", "olvidalo",
+                    "olvídalo", "detente", "para"
+                }
+
+                if command in cancel_words:
+                    self.pending_confirmation = None
+                    response = "Está bien, no me conecto."
+                else:
+                    self.pending_confirmation = None
+                    try:
+                        response = self.wifi.connect(
+                            pending["ssid"], password=original_command
+                        )
+                    except Exception as error:
+                        print("ERROR CONECTANDO WIFI:", error)
+                        response = f"No pude conectarme a {pending['ssid']}."
+
+                print("ECO:", response)
+
+                self._update_window(
+                    intent="CONNECT_WIFI",
+                    target=pending.get("ssid", ""),
+                    response=response,
+                    status="● ECO LISTA"
+                )
+
+                try:
+                    self.speaker.speak(response)
+                except Exception:
+                    pass
+
+                return True
 
             confirm_words = {
                 "si", "sí", "confirmo", "confirmado", "hazlo",
@@ -556,6 +788,37 @@ class Cortana:
                             confirmed=True
                         )
                         response_intent = "DELETE_FOLDER"
+                    elif pending["type"] == "learn_offer":
+                        # Paso 1 de 2: el usuario aceptó que Eco
+                        # INTENTE generar código para esto. Todavía no
+                        # se guarda ni se ejecuta nada — solo se prepara
+                        # y se pide una segunda confirmación explícita
+                        # (ver SkillLearner.prepare_skill).
+                        prepared, summary = self.skill_learner.prepare_skill(
+                            pending["description"]
+                        )
+                        if prepared:
+                            self.pending_confirmation = {
+                                "type": "learn_confirm",
+                                "prepared": prepared,
+                            }
+                            response = (
+                                summary
+                                + " ¿Guardo esta habilidad y la ejecuto ahora?"
+                            )
+                        else:
+                            response = (
+                                summary
+                                or "No pude generar una forma de hacer eso."
+                            )
+                        response_intent = "LEARN_SKILL_PREPARED"
+                    elif pending["type"] == "learn_confirm":
+                        # Paso 2 de 2: recién aquí se guarda el código en
+                        # disco y se ejecuta, nunca antes de este punto.
+                        response = self.skill_learner.confirm_and_save(
+                            pending["prepared"]
+                        )
+                        response_intent = "LEARN_SKILL_SAVED"
                     else:
                         response = "No supe qué confirmar."
                         response_intent = "UNKNOWN"
@@ -564,13 +827,13 @@ class Cortana:
                     response = "No pude completar la acción."
                     response_intent = "UNKNOWN"
 
-                print("CORTANA:", response)
+                print("ECO:", response)
 
                 self._update_window(
                     intent=response_intent,
                     target=pending.get("target", ""),
                     response=response,
-                    status="● CORTANA LISTA"
+                    status="● ECO LISTA"
                 )
 
                 try:
@@ -586,7 +849,7 @@ class Cortana:
 
                 response = "Está bien, no hago nada."
 
-                print("CORTANA:", response)
+                print("ECO:", response)
 
                 try:
                     self.speaker.speak(response)
@@ -594,6 +857,76 @@ class Cortana:
                     pass
 
                 return True
+
+        # =====================================================
+        # EJECUTAR APLICACIÓN DEL ESCRITORIO
+        # Ejemplo: "ejecuta Steam del escritorio". Esto busca
+        # directamente accesos .lnk y archivos .exe del Escritorio,
+        # sin necesitar que la aplicación ya esté en el catálogo.
+        # =====================================================
+
+        desktop_app_match = re.match(
+            r"^(?:abre|abrir|ejecuta|ejecutar|inicia|iniciar)\s+(.+?)\s+"
+            r"(?:del|desde\s+el|en\s+el)\s+escritorio$",
+            command
+        )
+
+        if desktop_app_match:
+            target = desktop_app_match.group(1).strip()
+            if target:
+                print("LOCAL: EJECUTAR DESDE ESCRITORIO ->", target)
+                try:
+                    response = self.windows.open_desktop_application(target)
+                except Exception as error:
+                    print("ERROR EJECUTANDO DESDE ESCRITORIO:", error)
+                    response = f"No pude ejecutar {target} desde el Escritorio."
+
+                print("ECO:", response)
+                self._update_window(
+                    intent="OPEN_DESKTOP_APPLICATION",
+                    target=target,
+                    response=response,
+                    status="● ECO LISTA"
+                )
+                try:
+                    self.speaker.speak(response)
+                except Exception:
+                    pass
+                return True
+
+        # =====================================================
+        # PIN Y CONTRASEÑA DE WINDOWS
+        # Windows no permite cambiar credenciales sin que la
+        # persona se autentique, por eso Eco abre la pantalla
+        # oficial donde el usuario completa el cambio.
+        # =====================================================
+
+        sign_in_match = re.search(
+            r"\b(?:cambia|cambiar|modifica|modificar|configura|configurar|"
+            r"abre)\b.*\b(?:pin|contrase[nñ]a|password)\b",
+            command
+        )
+
+        if sign_in_match:
+            print("LOCAL: OPCIONES DE INICIO DE SESIÓN")
+            try:
+                response = self.windows.open_sign_in_options()
+            except Exception as error:
+                print("ERROR ABRIENDO OPCIONES DE INICIO:", error)
+                response = "No pude abrir las opciones de inicio de sesión de Windows."
+
+            print("ECO:", response)
+            self._update_window(
+                intent="OPEN_SIGN_IN_OPTIONS",
+                target="PIN de Windows",
+                response=response,
+                status="● ECO LISTA"
+            )
+            try:
+                self.speaker.speak(response)
+            except Exception:
+                pass
+            return True
 
         # =====================================================
         # INSTALAR PROGRAMA (vía winget)
@@ -630,13 +963,13 @@ class Cortana:
                     print("ERROR INSTALANDO:", error)
                     response = f"No pude instalar {name}."
 
-                print("CORTANA:", response)
+                print("ECO:", response)
 
                 self._update_window(
                     intent="INSTALL_PROGRAM",
                     target=name,
                     response=response,
-                    status="● CORTANA LISTA"
+                    status="● ECO LISTA"
                 )
 
                 try:
@@ -687,7 +1020,7 @@ class Cortana:
                         "CONFIRMATION_REQUIRED:", ""
                     ).strip()
 
-                    print("CORTANA:", spoken)
+                    print("ECO:", spoken)
 
                     self._update_window(
                         intent="UNINSTALL_PROGRAM",
@@ -703,7 +1036,7 @@ class Cortana:
 
                 else:
 
-                    print("CORTANA:", response)
+                    print("ECO:", response)
 
                     try:
                         self.speaker.speak(response)
@@ -726,7 +1059,7 @@ class Cortana:
 
                 response = "¿Cómo quieres que se llame la carpeta?"
 
-                print("CORTANA:", response)
+                print("ECO:", response)
 
                 try:
                     self.speaker.speak(response)
@@ -749,13 +1082,13 @@ class Cortana:
                 print("ERROR CREANDO CARPETA:", error)
                 response = "No pude crear la carpeta."
 
-            print("CORTANA:", response)
+            print("ECO:", response)
 
             self._update_window(
                 intent="CREATE_FOLDER",
                 target=folder_name,
                 response=response,
-                status="● CORTANA LISTA"
+                status="● ECO LISTA"
             )
 
             try:
@@ -807,7 +1140,7 @@ class Cortana:
                         "CONFIRMATION_REQUIRED:", ""
                     ).strip()
 
-                    print("CORTANA:", spoken)
+                    print("ECO:", spoken)
 
                     self._update_window(
                         intent="DELETE_FOLDER",
@@ -823,7 +1156,7 @@ class Cortana:
 
                 else:
 
-                    print("CORTANA:", response)
+                    print("ECO:", response)
 
                     try:
                         self.speaker.speak(response)
@@ -864,7 +1197,7 @@ class Cortana:
                 if response:
 
                     print(
-                        "CORTANA:",
+                        "ECO:",
                         response
                     )
 
@@ -872,7 +1205,7 @@ class Cortana:
                         intent="PLAY_MEDIA",
                         target=str(value),
                         response=response,
-                        status="● CORTANA LISTA"
+                        status="● ECO LISTA"
                     )
 
                     try:
@@ -886,6 +1219,56 @@ class Cortana:
                     "ERROR WINAMP:",
                     error
                 )
+
+            return True
+
+        # =====================================================
+        # SISTEMAS PERSONALIZADOS (páginas configuradas por el
+        # usuario en windows/controller.py: self.custom_systems)
+        #
+        # Va ANTES de "ÓRDENES COMPUESTAS" (justo abajo) a propósito:
+        # ese bloque parte la frase por "y", así que "abre sistema 1
+        # y 2" se partiría en "abre sistema 1" y "2" sueltos. Aquí se
+        # extraen TODOS los números de una vez, sin importar cómo
+        # estén conectados.
+        # =====================================================
+
+        system_match = re.search(
+            r"\babre\s+(?:el\s+|los\s+)?sistemas?\s+(.+)$",
+            command
+        )
+
+        if system_match:
+
+            raw = system_match.group(1)
+            raw = raw.replace("uno", "1").replace("dos", "2")
+            numbers = list(dict.fromkeys(re.findall(r"[12]", raw)))
+
+            print()
+            print("LOCAL: ABRIR SISTEMA(S) ->", numbers)
+
+            if not numbers:
+                response = "¿Cuál sistema, el 1 o el 2?"
+            else:
+                try:
+                    response = self.windows.open_system(numbers)
+                except Exception as error:
+                    print("ERROR ABRIENDO SISTEMA:", error)
+                    response = "No pude abrir el sistema."
+
+            print("ECO:", response)
+
+            self._update_window(
+                intent="OPEN_SYSTEM",
+                target=", ".join(numbers),
+                response=response,
+                status="● ECO LISTA"
+            )
+
+            try:
+                self.speaker.speak(response)
+            except Exception:
+                pass
 
             return True
 
@@ -972,7 +1355,7 @@ class Cortana:
                 )
 
                 print(
-                    "CORTANA: Apagando la computadora "
+                    "ECO: Apagando la computadora "
                     "en 3 segundos."
                 )
 
@@ -1036,7 +1419,7 @@ class Cortana:
                 )
 
                 print(
-                    "CORTANA: Reiniciando la computadora "
+                    "ECO: Reiniciando la computadora "
                     "en 3 segundos."
                 )
 
@@ -1086,7 +1469,7 @@ class Cortana:
                 )
 
                 print(
-                    "CORTANA: Apagado cancelado."
+                    "ECO: Apagado cancelado."
                 )
 
                 try:
@@ -1106,6 +1489,35 @@ class Cortana:
             return True
 
         # =====================================================
+        # CERRAR SESIÓN
+        # Debe revisarse ANTES del patrón genérico "cierra X" (más
+        # abajo, en CERRAR PROGRAMAS): sin este bloque, "cierra
+        # sesión" caía ahí y Eco intentaba cerrar un PROCESO
+        # llamado "sesión" (que nunca existe) en vez de cerrar la
+        # sesión de Windows — por eso el comando nunca funcionaba.
+        # =====================================================
+
+        if re.search(r"\b(cierra|cerrar)\b.*\bsesi[oó]n\b", command):
+
+            print()
+            print("LOCAL: CERRAR SESIÓN")
+
+            try:
+                response = self.windows.logout_pc()
+            except Exception as error:
+                print("ERROR CERRANDO SESIÓN:", error)
+                response = "No pude cerrar la sesión."
+
+            print("ECO:", response)
+
+            try:
+                self.speaker.speak(response)
+            except Exception:
+                pass
+
+            return True
+
+        # =====================================================
         # ACTUALIZACIONES
         # =====================================================
 
@@ -1114,11 +1526,14 @@ class Cortana:
             "buscar actualizaciones",
             "hay actualizaciones",
             "revisa actualizaciones",
-            "actualiza cortana",
-            "actualizar cortana",
             "actualízate",
             "actualizate"
         ]
+
+        # "actualiza eco" / "actualizar eco" (+ variantes fonéticas del nombre)
+        for nombre in self.WAKE_WORD_VARIANTS:
+            update_commands.append(f"actualiza {nombre}")
+            update_commands.append(f"actualizar {nombre}")
 
         if command in update_commands:
 
@@ -1138,7 +1553,7 @@ class Cortana:
                 response = self.updater.check_download_and_apply()
 
                 print(
-                    "CORTANA:",
+                    "ECO:",
                     response
                 )
 
@@ -1146,7 +1561,7 @@ class Cortana:
                     intent="UPDATE",
                     target="",
                     response=response,
-                    status="● CORTANA LISTA"
+                    status="● ECO LISTA"
                 )
 
                 try:
@@ -1164,6 +1579,393 @@ class Cortana:
                 )
 
             return True
+
+        # =====================================================
+        # WHATSAPP (envía / lee / borra, vía core/whatsapp_client.py)
+        #
+        # La primera vez que se use cualquiera de estos tres, se abre
+        # un navegador para que escanees el código QR con tu teléfono
+        # — puede tardar. Ver whatsapp_client.py para las advertencias
+        # de términos de servicio y fragilidad de la interfaz.
+        #
+        # Estos patrones se probaron contra decenas de formas de decir
+        # lo mismo (orden de "un mensaje"/"por whatsapp"/"a NOMBRE"
+        # intercambiado, con y sin "whatsapp" explícito, con distintos
+        # verbos y separadores) antes de dejarlos aquí — no son un
+        # primer intento a ciegas.
+        # =====================================================
+
+        WHATSAPP_MENTION = r"(?:whatsapp|wasap|guasap|wsp)"
+
+        # "un [mensaje] [de/por] whatsapp": cada pieza es opcional por
+        # separado, y este mismo bloque se usa TANTO antes de "a
+        # NOMBRE" como después, porque la gente lo dice de las dos
+        # formas ("mándale un mensaje a Juan por whatsapp..." Y
+        # "mándale a Juan un mensaje por whatsapp...").
+        WHATSAPP_CONNECTOR = (
+            rf"(?:un\s+)?(?:mensaje\s+)?(?:(?:de|por)\s+)?"
+            rf"(?:{WHATSAPP_MENTION}\s*)?"
+        )
+
+        # \b al final de cada palabra para que "diciendo" no matchee
+        # como prefijo de "diciéndole" y se coma parte del mensaje.
+        WHATSAPP_SEPARATOR = (
+            r"(?:diciendo\b|dici[eé]ndole\b|que\s+diga\b|"
+            r"con\s+el\s+mensaje\b|que\b|[:\-])\s*"
+        )
+
+        send_whatsapp_match = re.search(
+            rf"^(?:por\s+{WHATSAPP_MENTION}\s+)?"
+            r"(?:env[ií]a(?:le)?|manda(?:le)?|escr[ií]be(?:le)?|"
+            r"d[ií]le|dic[ée]le|(?:un\s+)?mensaje)\s+"
+            rf"{WHATSAPP_CONNECTOR}a\s+(.+?)\s+"
+            rf"{WHATSAPP_CONNECTOR}{WHATSAPP_SEPARATOR}(.+)$",
+            command
+        )
+
+        if send_whatsapp_match:
+
+            contact = send_whatsapp_match.group(1).strip()
+            message = send_whatsapp_match.group(2).strip()
+
+            print()
+            print("LOCAL: ENVIAR WHATSAPP ->", contact, "|", message)
+
+            try:
+                response = self.whatsapp.send_message(contact, message)
+            except Exception as error:
+                print("ERROR WHATSAPP (ENVIAR):", error)
+                response = f"No pude enviar el WhatsApp a {contact}."
+
+            print("ECO:", response)
+
+            self._update_window(
+                intent="SEND_WHATSAPP",
+                target=contact,
+                response=response,
+                status="● ECO LISTA"
+            )
+
+            try:
+                self.speaker.speak(response)
+            except Exception:
+                pass
+
+            return True
+
+        read_whatsapp_match = (
+            re.search(
+                rf"^(?:l[eé]e(?:me)?|revisa(?:me)?)\s+"
+                rf"(?:los\s+|el\s+)?(?:[uú]ltimos\s+)?"
+                rf"(?:mensajes|{WHATSAPP_MENTION})\s+de\s+"
+                rf"(.+?)(?:\s+(?:en|por)\s+{WHATSAPP_MENTION})?$",
+                command
+            )
+            or re.search(
+                rf"^(?:por\s+{WHATSAPP_MENTION}\s+)?(?:dime\s+)?"
+                r"qu[eé]\s+me\s+(?:escribi[oó]|mand[oó]|envi[oó]|dijo)\s+"
+                rf"(.+?)(?:\s+por\s+{WHATSAPP_MENTION})?$",
+                command
+            )
+        )
+
+        if read_whatsapp_match:
+
+            contact = read_whatsapp_match.group(1).strip()
+
+            print()
+            print("LOCAL: LEER WHATSAPP ->", contact)
+
+            try:
+                messages = self.whatsapp.read_last_messages(contact)
+            except Exception as error:
+                print("ERROR WHATSAPP (LEER):", error)
+                messages = [f"No pude leer los mensajes de {contact}."]
+
+            response = (
+                f"Esto es lo último con {contact} por WhatsApp: "
+                + " / ".join(messages)
+            )
+
+            print("ECO:", response)
+
+            self._update_window(
+                intent="READ_WHATSAPP",
+                target=contact,
+                response=response,
+                status="● ECO LISTA"
+            )
+
+            try:
+                self.speaker.speak(response)
+            except Exception:
+                pass
+
+            return True
+
+        delete_whatsapp_match = re.search(
+            rf"^borra(?:me)?\s+(?:el|mi)\s+[uú]ltimo\s+"
+            rf"(?:mensaje|{WHATSAPP_MENTION})\s+"
+            rf"(?:de\s+{WHATSAPP_MENTION}\s+)?"
+            r"(?:que\s+le\s+(?:envi[eé]|mand[eé])\s+a\s+|a\s+)"
+            rf"(.+?)(?:\s+por\s+{WHATSAPP_MENTION})?$",
+            command
+        )
+
+        if delete_whatsapp_match:
+
+            contact = delete_whatsapp_match.group(1).strip()
+            # Por defecto se borra SOLO PARA TI (reversible únicamente
+            # en tu equipo). Solo se borra "para todos" si lo pides
+            # explícitamente — es lo que de verdad borra el mensaje del
+            # otro lado, y WhatsApp además le muestra un aviso a la
+            # otra persona de que borraste algo.
+            for_everyone = bool(
+                re.search(r"para\s+todos|a\s+todos", command)
+            )
+
+            print()
+            print(
+                "LOCAL: BORRAR WHATSAPP ->", contact,
+                "| para_todos =", for_everyone
+            )
+
+            try:
+                response = self.whatsapp.delete_last_sent_message(
+                    contact, for_everyone=for_everyone
+                )
+            except Exception as error:
+                print("ERROR WHATSAPP (BORRAR):", error)
+                response = f"No pude borrar el mensaje de {contact}."
+
+            print("ECO:", response)
+
+            self._update_window(
+                intent="DELETE_WHATSAPP",
+                target=contact,
+                response=response,
+                status="● ECO LISTA"
+            )
+
+            try:
+                self.speaker.speak(response)
+            except Exception:
+                pass
+
+            return True
+
+        # =====================================================
+        # WIFI (vía windows/wifi.py — netsh, sin dependencias nuevas)
+        # =====================================================
+
+        if re.search(
+            r"\b(lista|listame|muestrame|dime|que)\b.*"
+            r"\b(wifis?|redes?(?:\s+de\s+wifi)?)\b.*"
+            r"(?:disponibles?|cerca|hay)?$",
+            command
+        ):
+
+            print()
+            print("LOCAL: LISTAR WIFI")
+
+            try:
+                response = self.wifi.list_networks_text()
+            except Exception as error:
+                print("ERROR LISTANDO WIFI:", error)
+                response = "No pude listar las redes Wi-Fi."
+
+            print("ECO:", response)
+
+            self._update_window(
+                intent="LIST_WIFI",
+                response=response,
+                status="● ECO LISTA"
+            )
+
+            try:
+                self.speaker.speak(response)
+            except Exception:
+                pass
+
+            return True
+
+        connect_wifi_match = re.search(
+            r"\bconecta(?:te)?\b\s+(?:al?\s+)?(?:la\s+red\s+|el\s+wifi\s+|"
+            r"la\s+wifi\s+)?(.+?)\s*(?:\(?\s*wifi\s*\)?)?$",
+            command
+        )
+
+        if connect_wifi_match and "wifi" in command:
+
+            ssid = connect_wifi_match.group(1).strip()
+            # Por si quedó "wifi" pegado al nombre porque venía antes
+            # del nombre de la red en vez de después.
+            ssid = re.sub(r"\bwifi\b", "", ssid).strip()
+
+            print()
+            print("LOCAL: CONECTAR WIFI ->", ssid)
+
+            if not ssid:
+                response = "¿A qué red Wi-Fi quieres que me conecte?"
+            elif self.wifi.is_network_secured(ssid):
+                self.pending_confirmation = {
+                    "type": "wifi_password",
+                    "ssid": ssid,
+                }
+                response = (
+                    f"La red {ssid} tiene seguridad. ¿Cuál es la "
+                    "contraseña?"
+                )
+            else:
+                try:
+                    response = self.wifi.connect(ssid)
+                except Exception as error:
+                    print("ERROR CONECTANDO WIFI:", error)
+                    response = f"No pude conectarme a {ssid}."
+
+            print("ECO:", response)
+
+            self._update_window(
+                intent="CONNECT_WIFI",
+                target=ssid,
+                response=response,
+                status="● ECO LISTA"
+            )
+
+            try:
+                self.speaker.speak(response)
+            except Exception:
+                pass
+
+            return True
+
+        # =====================================================
+        # BLUETOOTH (vía windows/bluetooth.py — dispositivos YA
+        # EMPAREJADOS solamente; ver el aviso al inicio de ese
+        # archivo sobre por qué no empareja dispositivos nuevos)
+        # =====================================================
+
+        if re.search(
+            r"\b(lista|listame|muestrame|dime|que)\b.*"
+            r"\b(dispositivos?\s+)?bluetooth\b",
+            command
+        ):
+
+            print()
+            print("LOCAL: LISTAR BLUETOOTH")
+
+            try:
+                response = self.bluetooth.list_devices_text()
+            except Exception as error:
+                print("ERROR LISTANDO BLUETOOTH:", error)
+                response = "No pude listar los dispositivos Bluetooth."
+
+            print("ECO:", response)
+
+            self._update_window(
+                intent="LIST_BLUETOOTH",
+                response=response,
+                status="● ECO LISTA"
+            )
+
+            try:
+                self.speaker.speak(response)
+            except Exception:
+                pass
+
+            return True
+
+        connect_bluetooth_match = re.search(
+            r"\bconecta(?:te)?\b\s+(?:al?\s+)?(?:el\s+bluetooth\s+|"
+            r"por\s+bluetooth\s+a\s+)?(.+?)\s*(?:\(?\s*bluetooth\s*\)?)?$",
+            command
+        )
+
+        if connect_bluetooth_match and "bluetooth" in command:
+
+            device_name = connect_bluetooth_match.group(1).strip()
+            device_name = re.sub(
+                r"\bbluetooth\b", "", device_name
+            ).strip()
+
+            print()
+            print("LOCAL: CONECTAR BLUETOOTH ->", device_name)
+
+            try:
+                response = self.bluetooth.connect(device_name)
+            except Exception as error:
+                print("ERROR CONECTANDO BLUETOOTH:", error)
+                response = f"No pude conectarme a {device_name}."
+
+            print("ECO:", response)
+
+            self._update_window(
+                intent="CONNECT_BLUETOOTH",
+                target=device_name,
+                response=response,
+                status="● ECO LISTA"
+            )
+
+            try:
+                self.speaker.speak(response)
+            except Exception:
+                pass
+
+            return True
+
+        # =====================================================
+        # SISTEMAS (URLs fijas configuradas por el usuario)
+        # "abre sistema 1", "abre sistema 2", "abre sistema 1 y 2",
+        # "abre sistema 1 y dos", "abre ambos sistemas"
+        # =====================================================
+
+        SISTEMA_URLS = {
+            "1": "https://dldservicio.smartolt.com/auth/login",
+            "2": "https://dldservicio.net/admin/login",
+        }
+
+        sistema_match = re.search(
+            r"\b(?:abre|abrir)\b.*\bsistemas?\b\s*(.*)$", command
+        )
+
+        if sistema_match:
+
+            resto = sistema_match.group(1)
+            resto = re.sub(r"\buno\b", "1", resto)
+            resto = re.sub(r"\bdos\b", "2", resto)
+
+            numeros = sorted(set(re.findall(r"\b[12]\b", resto)))
+
+            if not numeros and re.search(
+                r"\b(ambos|los\s+dos|todos)\b", resto
+            ):
+                numeros = ["1", "2"]
+
+            if numeros:
+
+                print()
+                print("LOCAL: ABRIR SISTEMA(S) ->", numeros)
+
+                respuestas = [
+                    self.windows.open_url(SISTEMA_URLS[n]) for n in numeros
+                ]
+                response = " ".join(respuestas)
+
+                print("ECO:", response)
+
+                self._update_window(
+                    intent="OPEN_SISTEMA",
+                    target=",".join(numeros),
+                    response=response,
+                    status="● ECO LISTA"
+                )
+
+                try:
+                    self.speaker.speak(response)
+                except Exception:
+                    pass
+
+                return True
 
         # =====================================================
         # SILENCIO
@@ -1192,7 +1994,7 @@ class Cortana:
                 response = self.media.volume_mute()
 
                 print(
-                    "CORTANA:",
+                    "ECO:",
                     response
                 )
 
@@ -1249,7 +2051,7 @@ class Cortana:
                 response = self.media.volume_unmute()
 
                 print(
-                    "CORTANA:",
+                    "ECO:",
                     response
                 )
 
@@ -1297,7 +2099,7 @@ class Cortana:
                 response = self.media.volume_up()
 
                 print(
-                    "CORTANA:",
+                    "ECO:",
                     response
                 )
 
@@ -1347,7 +2149,7 @@ class Cortana:
                 )
 
                 print(
-                    "CORTANA:",
+                    "ECO:",
                     response
                 )
 
@@ -1394,7 +2196,7 @@ class Cortana:
                 response = self.media.volume_down()
 
                 print(
-                    "CORTANA:",
+                    "ECO:",
                     response
                 )
 
@@ -1441,7 +2243,7 @@ class Cortana:
                 response = self._control_playback("play")
 
                 print(
-                    "CORTANA:",
+                    "ECO:",
                     response
                 )
 
@@ -1485,7 +2287,7 @@ class Cortana:
                 response = self._control_playback("pause")
 
                 print(
-                    "CORTANA:",
+                    "ECO:",
                     response
                 )
 
@@ -1527,7 +2329,7 @@ class Cortana:
                 response = self._control_playback("next")
 
                 print(
-                    "CORTANA:",
+                    "ECO:",
                     response
                 )
 
@@ -1569,7 +2371,7 @@ class Cortana:
                 response = self._control_playback("previous")
 
                 print(
-                    "CORTANA:",
+                    "ECO:",
                     response
                 )
 
@@ -1616,7 +2418,7 @@ class Cortana:
                 response = self._control_playback("stop")
 
                 print(
-                    "CORTANA:",
+                    "ECO:",
                     response
                 )
 
@@ -1697,7 +2499,7 @@ class Cortana:
                 if response:
 
                     print(
-                        "CORTANA:",
+                        "ECO:",
                         response
                     )
 
@@ -1759,7 +2561,7 @@ class Cortana:
                 if response:
 
                     print(
-                        "CORTANA:",
+                        "ECO:",
                         response
                     )
 
@@ -1823,7 +2625,7 @@ class Cortana:
                         if response:
 
                             print(
-                                "CORTANA:",
+                                "ECO:",
                                 response
                             )
 
@@ -1831,7 +2633,7 @@ class Cortana:
                                 intent="PLAY_MEDIA",
                                 target=parsed_target[1],
                                 response=response,
-                                status="● CORTANA LISTA"
+                                status="● ECO LISTA"
                             )
 
                             try:
@@ -1865,7 +2667,7 @@ class Cortana:
                     if response:
 
                         print(
-                            "CORTANA:",
+                            "ECO:",
                             response
                         )
 
@@ -1873,7 +2675,7 @@ class Cortana:
                             intent="PLAY_MEDIA",
                             target=query,
                             response=response,
-                            status="● CORTANA LISTA"
+                            status="● ECO LISTA"
                         )
 
                         try:
@@ -1935,7 +2737,7 @@ class Cortana:
                 if response:
 
                     print(
-                        "CORTANA:",
+                        "ECO:",
                         response
                     )
 
@@ -1994,7 +2796,7 @@ class Cortana:
                 if response:
 
                     print(
-                        "CORTANA:",
+                        "ECO:",
                         response
                     )
 
@@ -2055,6 +2857,37 @@ class Cortana:
 
         print(f"⏱ (no era comando local, tardó {time.time() - t_local_start:.2f}s en descartarlo)")
 
+        # Respuestas que Eco ya investigó antes. Se revisan antes
+        # de llamar a Ollama o a internet, pero solo para preguntas:
+        # una orden como "abre Chrome" nunca debe reutilizar una
+        # respuesta factual guardada por coincidencia casual.
+        is_question = "?" in text or command.startswith((
+            "que ", "qué ", "quien ", "quién ", "como ", "cómo ",
+            "cuando ", "cuándo ", "donde ", "dónde ", "cual ", "cuál ",
+            "por que ", "por qué ", "para que ", "para qué "
+        ))
+        if is_question:
+            try:
+                remembered = self.learning_brain.remember_knowledge(text)
+            except Exception as error:
+                print("ERROR LEYENDO CONOCIMIENTO APRENDIDO:", error)
+                remembered = None
+
+            if remembered:
+                response = remembered["answer"]
+                print("ECO (APRENDIDO):", response)
+                self._update_window(
+                    intent="CONOCIMIENTO_APRENDIDO",
+                    target="",
+                    response=response,
+                    status="● ECO LISTA"
+                )
+                try:
+                    self.speaker.speak(response)
+                except Exception:
+                    pass
+                return
+
         # =====================================================
         # CONVERSACIÓN
         # =====================================================
@@ -2078,7 +2911,7 @@ class Cortana:
 
             print()
             print(
-                "CORTANA:",
+                "ECO:",
                 conversation_response
             )
 
@@ -2086,7 +2919,7 @@ class Cortana:
                 intent="CONVERSACIÓN",
                 target="",
                 response=conversation_response,
-                status="● CORTANA LISTA"
+                status="● ECO LISTA"
             )
 
             try:
@@ -2138,11 +2971,50 @@ class Cortana:
         # revisa aqui, antes de tocar el cerebro para nada.
         # -----------------------------------------------------
 
+        # -----------------------------------------------------
+        # COMANDOS CONTEXTUALES ("hazlo de nuevo", "otra vez",
+        # "repite eso", "vuelve a hacerlo"). Se revisan ANTES que
+        # todo lo demás: reutilizan la última intención ya validada
+        # (last_intent/last_target) sin generar ni ejecutar código
+        # nuevo, y sin tocar a Ollama para nada.
+        # -----------------------------------------------------
+
+        context_reuse_result = None
+
+        try:
+            if self.context_resolver.is_context_command(text):
+
+                resolver_context = {
+                    "last_intent": self.memory.get_context("last_intent", ""),
+                    "last_target": self.memory.get_context("last_target", ""),
+                    "last_command": self.memory.get_context("last_command", ""),
+                }
+
+                context_reuse_result = self.context_resolver.resolve(
+                    text, resolver_context
+                )
+
+        except Exception as error:
+            print("ERROR RESOLVIENDO CONTEXTO:", error)
+            context_reuse_result = None
+
+        if context_reuse_result:
+
+            print()
+            print(
+                "LOCAL: REUTILIZANDO CONTEXTO ->",
+                context_reuse_result
+            )
+
         direct_system_intent = self.router.detect_direct_command(text)
 
         learned = None
 
-        if direct_system_intent:
+        if context_reuse_result:
+
+            result = context_reuse_result
+
+        elif direct_system_intent:
 
             print()
             print(
@@ -2173,7 +3045,7 @@ class Cortana:
 
                 learned = None
 
-        if direct_system_intent:
+        if context_reuse_result or direct_system_intent:
 
             pass
 
@@ -2212,7 +3084,7 @@ class Cortana:
                 assistant_line = str(turn.get("assistant", "")).strip()
                 if user_line or assistant_line:
                     history_lines.append(f"Usuario: {user_line}")
-                    history_lines.append(f"Cortana: {assistant_line}")
+                    history_lines.append(f"Eco: {assistant_line}")
 
             recent_history_text = (
                 "\n".join(history_lines) if history_lines else "(sin historial reciente)"
@@ -2336,20 +3208,48 @@ class Cortana:
             or confidence < 0.45
         ):
 
-            response = (
-                "No estoy suficientemente "
-                "segura de lo que quieres."
+            # Si el intent es UNKNOWN (no "una acción conocida pero con
+            # poca confianza"), y el usuario lo pidió de forma EXPLÍCITA
+            # ("aprende a...", "enséñame a..."), se ofrece generar código
+            # nuevo en vez de simplemente rendirse. Ofrecerlo ante
+            # CUALQUIER comando no reconocido sería molesto: un error de
+            # transcripción de voz también da UNKNOWN. Todavía no se
+            # genera ni ejecuta nada: solo queda pendiente, igual que
+            # "desinstala X" o "borra la carpeta X". Ver
+            # handle_local_command() para los dos pasos de confirmación.
+            skill_description = (
+                self._extract_skill_description(text)
+                if intent == "UNKNOWN" else None
             )
+
+            if skill_description:
+
+                response = (
+                    "¿Quieres que intente aprenderlo generando código "
+                    "automáticamente? Puede tardar un momento."
+                )
+
+                self.pending_confirmation = {
+                    "type": "learn_offer",
+                    "description": skill_description,
+                }
+
+            else:
+
+                response = (
+                    "No estoy suficientemente "
+                    "segura de lo que quieres."
+                )
 
             print()
             print(
-                "CORTANA:",
+                "ECO:",
                 response
             )
 
             self._update_window(
                 response=response,
-                status="● CORTANA LISTA"
+                status="● ECO LISTA"
             )
 
             try:
@@ -2392,19 +3292,28 @@ class Cortana:
                 text
             )
 
+            # Las respuestas factuales se convierten en conocimiento
+            # local para no depender siempre de Ollama ni de internet.
+            if intent == "WEB_SEARCH" and response:
+                try:
+                    self.learning_brain.teach_knowledge(text, response)
+                    print("CONOCIMIENTO APRENDIDO:", text)
+                except Exception as error:
+                    print("ERROR GUARDANDO CONOCIMIENTO:", error)
+
             print(f"⏱ ROUTER: {time.time() - t_router:.2f}s | TOTAL: {time.time() - t0:.2f}s")
 
             if response:
 
                 print()
                 print(
-                    "CORTANA:",
+                    "ECO:",
                     response
                 )
 
                 self._update_window(
                     response=response,
-                    status="● CORTANA LISTA"
+                    status="● ECO LISTA"
                 )
 
                 try:
@@ -2448,7 +3357,7 @@ class Cortana:
             )
 
             # Guarda el intercambio real (lo que preguntaste + lo que
-            # respondió Cortana) para que futuras preguntas de
+            # respondió Eco) para que futuras preguntas de
             # seguimiento puedan usarlo como contexto.
             self.memory.save(
                 text,

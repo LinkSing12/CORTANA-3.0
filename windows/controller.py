@@ -18,7 +18,7 @@ except ImportError:
 
 
 class WindowsController:
-    """Controlador general de Windows para CORTANA 4.0.
+    """Controlador general de Windows para ECO 4.0.
 
     Permite abrir/cerrar aplicaciones y juegos, resolver alias de voz y,
     cuando un juego usa un cliente, esperar y pulsar Jugar/Play/Launch/Start.
@@ -27,6 +27,7 @@ class WindowsController:
     def __init__(self):
         self.cache_dir = "data"
         self.cache_file = os.path.join(self.cache_dir, "installed_programs.json")
+        self.portable_games_file = os.path.join(self.cache_dir, "portable_games.json")
         os.makedirs(self.cache_dir, exist_ok=True)
 
         self.programs = {}
@@ -93,12 +94,19 @@ class WindowsController:
             "ubisoft connect": ["upc.exe", "UbisoftConnect.exe"],
         }
 
+        # "abre sistema 1" / "abre sistema 2" / "abre sistema 1 y 2"
+        # -> páginas web propias del usuario, no programas instalados.
+        self.custom_systems = {
+            "1": "https://dldservicio.smartolt.com/auth/login",
+            "2": "https://dldservicio.net/admin/login",
+        }
+
         # =====================================================
         # PROGRAMAS QUE PIDEN CONFIRMACIÓN DE ADMINISTRADOR
         # =====================================================
         # Para cada uno, crea una Tarea Programada de Windows con
         # "ejecutar con privilegios más altos" (ver instrucciones),
-        # y agrega aquí: "nombre que le dices a cortana": "NombreDeLaTarea"
+        # y agrega aquí: "nombre que le dices a eco": "NombreDeLaTarea"
         #
         # Ejemplo:
         #   schtasks /create /tn "Cortana_AbrirSekiro" /tr "\"C:\...\sekiro.exe\""
@@ -300,8 +308,15 @@ class WindowsController:
         if best_key:
             return candidates[best_key]
 
+        # cutoff=0.6 (antes 0.45): con 0.45, "whatsapp" contra
+        # "character map" daba 0.476 — una coincidencia PURAMENTE
+        # accidental de letras, no un parecido real — y Eco
+        # terminaba abriendo el Mapa de caracteres al pedir WhatsApp
+        # (que ni siquiera está en el catálogo). 0.6 sigue aceptando
+        # errores de tipeo reales (p. ej. "spotifi" -> Spotify, 0.86)
+        # pero rechaza coincidencias débiles como esa.
         matches = difflib.get_close_matches(
-            target, list(candidates.keys()), n=1, cutoff=0.45
+            target, list(candidates.keys()), n=1, cutoff=0.6
         )
         return candidates[matches[0]] if matches else None
 
@@ -344,8 +359,16 @@ class WindowsController:
         return None
 
     def open_riot_client(self):
-        processes = self.client_processes["riot client"]
-        if self.process_running(processes):
+        # RiotClientServices.exe es un proceso de FONDO que casi
+        # siempre está corriendo (Riot lo deja activo para arrancar
+        # más rápido después), incluso SIN ninguna ventana visible.
+        # Usar la lista completa aquí hacía que Eco pensara "ya
+        # está abierto" y nunca lanzara nada — por eso no aparecía
+        # ninguna ventana y el botón Jugar nunca se podía detectar
+        # (no había ninguna ventana donde buscarlo).
+        # RiotClientUx.exe es el proceso de la ventana real; solo ese
+        # cuenta como "ya está abierto".
+        if self.process_running(["RiotClientUx.exe"]):
             return True
         exe = self.find_riot_client()
         if not exe:
@@ -357,28 +380,82 @@ class WindowsController:
             print("ERROR ABRIENDO RIOT:", error)
             return False
 
-    def click_play_button(self, timeout=45):
-        """Detecta Jugar/Play mediante UI Automation y, si hace falta, OCR."""
+    def click_play_button(self, timeout=45, process_names=None):
+        """
+        Detecta Jugar/Play mediante UI Automation y, si hace falta, OCR.
+
+        Si se da process_names (ej. ["RiotClientServices.exe", ...]),
+        la búsqueda se restringe a las ventanas de esos procesos. SIN
+        esto, se buscaba en TODAS las ventanas visibles del escritorio
+        — y como "launch" es una de las palabras buscadas, en equipos
+        con Visual Studio abierto (que tiene un botón "Launch Profile"
+        en su barra de herramientas) Eco terminaba haciéndole clic
+        a ESO en vez de al botón real del cliente del juego.
+        """
         targets = {"jugar", "play", "launch", "start", "iniciar"}
         end = time.time() + timeout
+        first_attempt = True
 
         while time.time() < end:
-            if self._click_uia(targets):
+            if self._click_uia(
+                targets, process_names=process_names, debug=first_attempt
+            ):
                 return True
-            if self._click_ocr(targets):
+            if self._click_ocr(
+                targets, process_names=process_names, debug=first_attempt
+            ):
                 return True
+            first_attempt = False
             time.sleep(1)
         return False
 
-    def _click_uia(self, targets):
+    def _target_pids(self, process_names):
+        if not process_names or not psutil:
+            return None
+        wanted = {self.normalize_process_name(n) for n in process_names}
+        pids = set()
+        try:
+            for process in psutil.process_iter(["pid", "name"]):
+                name = process.info.get("name")
+                if name and self.normalize_process_name(name) in wanted:
+                    pids.add(process.info["pid"])
+        except Exception:
+            pass
+        return pids
+
+    def _click_uia(self, targets, process_names=None, debug=False):
         try:
             from pywinauto import Desktop
         except ImportError:
+            if debug:
+                print("UIA DEBUG: pywinauto no está instalado.")
             return False
+
+        allowed_pids = None
+        if process_names:
+            allowed_pids = self._target_pids(process_names)
+            if not allowed_pids:
+                # El proceso del cliente todavía no tiene ninguna
+                # ventana abierta — nada que buscar todavía.
+                if debug:
+                    print(
+                        "UIA DEBUG: ningún proceso de", process_names,
+                        "está corriendo todavía."
+                    )
+                return False
+
+        matched_windows = 0
+        total_buttons = 0
+        seen_texts = []
+
         try:
             desktop = Desktop(backend="uia")
             for window in desktop.windows(visible_only=True):
                 try:
+                    if allowed_pids is not None:
+                        if window.process_id() not in allowed_pids:
+                            continue
+                    matched_windows += 1
                     controls = window.descendants(control_type="Button")
                 except Exception:
                     continue
@@ -387,6 +464,9 @@ class WindowsController:
                         text = self.normalize_text(control.window_text())
                         if not text:
                             text = self.normalize_text(control.element_info.name)
+                        total_buttons += 1
+                        if debug and len(seen_texts) < 20:
+                            seen_texts.append(text or "(sin texto)")
                         if text in targets or any(t in text for t in targets):
                             print("BOTON DETECTADO:", text)
                             control.click_input()
@@ -395,31 +475,101 @@ class WindowsController:
                         continue
         except Exception as error:
             print("UIA:", error)
+
+        if debug:
+            print(
+                f"UIA DEBUG: {matched_windows} ventana(s) del proceso "
+                f"encontradas, {total_buttons} botón(es) revisados. "
+                f"Textos vistos: {seen_texts}"
+            )
+
         return False
 
-    def _click_ocr(self, targets):
+    def _tesseract_available(self):
+        """
+        pytesseract es solo el envoltorio de Python — necesita el
+        motor real de Tesseract-OCR instalado aparte en Windows. Esto
+        distingue "no está instalado el motor" de "no encontró el
+        botón", para dar un mensaje que de verdad ayude.
+        """
+        try:
+            import pytesseract
+            pytesseract.get_tesseract_version()
+            return True
+        except Exception:
+            return False
+
+    def _click_ocr(self, targets, process_names=None, debug=False):
         try:
             import pyautogui
             import pytesseract
         except ImportError:
+            if debug:
+                print("OCR DEBUG: pyautogui o pytesseract no están instalados.")
             return False
+
+        region = None
+        offset_x, offset_y = 0, 0
+
+        if process_names:
+            allowed_pids = self._target_pids(process_names)
+            if not allowed_pids:
+                return False
+            try:
+                from pywinauto import Desktop
+                desktop = Desktop(backend="uia")
+                target_window = None
+                for window in desktop.windows(visible_only=True):
+                    try:
+                        if window.process_id() in allowed_pids:
+                            target_window = window
+                            break
+                    except Exception:
+                        continue
+                if target_window is None:
+                    if debug:
+                        print(
+                            "OCR DEBUG: no encontré ninguna ventana de ese "
+                            "proceso para recortar la captura de pantalla."
+                        )
+                    return False
+                rect = target_window.rectangle()
+                offset_x, offset_y = rect.left, rect.top
+                region = (rect.left, rect.top, rect.width(), rect.height())
+                if debug:
+                    print(f"OCR DEBUG: región de captura = {region}")
+            except Exception as error:
+                print("UIA (región para OCR):", error)
+                return False
+
         try:
-            image = pyautogui.screenshot()
+            image = (
+                pyautogui.screenshot(region=region)
+                if region else pyautogui.screenshot()
+            )
             data = pytesseract.image_to_data(
                 image, output_type=pytesseract.Output.DICT, config="--psm 11"
             )
+            read_words = []
             for i, raw in enumerate(data.get("text", [])):
                 word = self.normalize_text(raw)
                 if not word:
                     continue
+                if debug and len(read_words) < 40:
+                    read_words.append(word)
                 if word in targets or any(t in word for t in targets):
-                    x = int(data["left"][i])
-                    y = int(data["top"][i])
+                    x = int(data["left"][i]) + offset_x
+                    y = int(data["top"][i]) + offset_y
                     w = int(data["width"][i])
                     h = int(data["height"][i])
                     pyautogui.click(x + w // 2, y + h // 2)
                     print("BOTON OCR DETECTADO:", raw)
                     return True
+            if debug:
+                print(
+                    f"OCR DEBUG: {len(read_words)} palabra(s) leídas en "
+                    f"la región: {read_words}"
+                )
         except Exception as error:
             print("OCR:", error)
         return False
@@ -435,8 +585,22 @@ class WindowsController:
             if not self.open_riot_client():
                 return "No pude abrir Riot Client."
             time.sleep(3)
-            if self.click_play_button(45):
+            if self.click_play_button(
+                45, process_names=self.client_processes.get(client)
+            ):
                 return f"He pulsado Jugar para iniciar {game}."
+
+            if not self._tesseract_available():
+                return (
+                    "Abrí el cliente, pero no pude detectar el botón "
+                    "Jugar. Riot Client casi nunca expone sus botones a "
+                    "la accesibilidad de Windows, así que Eco "
+                    "necesita leer la pantalla con OCR — y Tesseract-OCR "
+                    "no está instalado. Instálalo desde "
+                    "https://github.com/UB-Mannheim/tesseract/wiki "
+                    "(agrégalo al PATH) e inténtalo de nuevo."
+                )
+
             return "Abrí el cliente, pero no pude detectar el botón Jugar."
 
         return f"Abrí el cliente {client}, pero todavía no tengo un flujo automático para su botón Jugar."
@@ -462,6 +626,123 @@ class WindowsController:
             return f"Abriendo {target}."
         except Exception:
             return f"No pude abrir {target}."
+
+    # ------------------------------------------------------------------
+    # JUEGOS PORTABLES
+    # ------------------------------------------------------------------
+    def _portable_game_roots(self):
+        """Devuelve todas las unidades locales disponibles para buscarlas."""
+        roots = []
+        for letter in "CDEFGHIJKLMNOPQRSTUVWXYZ":
+            drive = f"{letter}:\\"
+            if not os.path.isdir(drive):
+                continue
+            roots.append(drive)
+
+        return list(dict.fromkeys(roots))
+
+    def _read_portable_games(self):
+        try:
+            with open(self.portable_games_file, "r", encoding="utf-8") as file:
+                data = json.load(file)
+            return data if isinstance(data, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    def _save_portable_game(self, name, path):
+        data = self._read_portable_games()
+        data[self.normalize_text(name)] = path
+        temporary = self.portable_games_file + ".tmp"
+        try:
+            with open(temporary, "w", encoding="utf-8") as file:
+                json.dump(data, file, ensure_ascii=False, indent=2)
+            os.replace(temporary, self.portable_games_file)
+        except OSError as error:
+            print("ERROR GUARDANDO JUEGO PORTABLE:", error)
+
+    def _portable_game_score(self, target, path):
+        target = self.normalize_text(target)
+        compact_target = target.replace(" ", "")
+        filename = os.path.splitext(os.path.basename(path))[0]
+        parent = os.path.basename(os.path.dirname(path))
+        labels = (self.normalize_text(filename), self.normalize_text(parent))
+        score = 0.0
+
+        for label in labels:
+            compact_label = label.replace(" ", "")
+            if label == target or compact_label == compact_target:
+                score = max(score, 100.0)
+            elif target in label or compact_target in compact_label:
+                score = max(score, 85.0)
+            else:
+                score = max(score, difflib.SequenceMatcher(None, target, label).ratio() * 70)
+        return score
+
+    # Profundidad por defecto del escaneo de unidades completas. Antes
+    # era ilimitada (max_depth=None): en discos con muchas carpetas
+    # (Program Files, backups, etc.) eso podía tardar mucho la primera
+    # vez que pedías un juego portable no cacheado todavía. 8 niveles
+    # alcanza sin problema instalaciones típicas tipo
+    # "E:\Games\Nombre\bin\win64\juego.exe" sin recorrer todo el disco.
+    DEFAULT_PORTABLE_SCAN_DEPTH = 8
+
+    def find_portable_game(self, target, max_depth=DEFAULT_PORTABLE_SCAN_DEPTH):
+        """Encuentra un ejecutable en cualquier unidad local del equipo."""
+        target = self.clean_target(target)
+        if not target:
+            return None
+
+        cached = self._read_portable_games().get(target)
+        if cached and os.path.isfile(cached):
+            return cached
+
+        best_path = None
+        best_score = 0.0
+        roots = self._portable_game_roots()
+        if not roots:
+            return None
+
+        print("BUSCANDO EJECUTABLE EN TODO EL EQUIPO:", ", ".join(roots))
+        for base in roots:
+            for current_root, directories, files in os.walk(base, topdown=True):
+                relative = os.path.relpath(current_root, base)
+                depth = 0 if relative == "." else relative.count(os.sep) + 1
+                directories[:] = [
+                    item for item in directories
+                    if item.lower() not in {
+                        "$recycle.bin", "system volume information", "windows",
+                        "node_modules", "__pycache__", ".git",
+                        "program files", "program files (x86)", "programdata",
+                        "appdata", "windows.old", "$windows.~bt", "$windows.~ws",
+                    }
+                ]
+                if max_depth is not None and depth >= max_depth:
+                    directories[:] = []
+
+                for filename in files:
+                    if not filename.lower().endswith(".exe"):
+                        continue
+                    path = os.path.join(current_root, filename)
+                    score = self._portable_game_score(target, path)
+                    if score > best_score:
+                        best_path, best_score = path, score
+
+        # Evita abrir un .exe apenas parecido por accidente.
+        if best_path and best_score >= 60:
+            self._save_portable_game(target, best_path)
+            return best_path
+        return None
+
+    def open_portable_game(self, target):
+        path = self.find_portable_game(target)
+        if not path:
+            return None
+        try:
+            subprocess.Popen([path], cwd=os.path.dirname(path), close_fds=True)
+            return f"Abriendo: {os.path.splitext(os.path.basename(path))[0]}."
+        except Exception as error:
+            print("ERROR ABRIENDO JUEGO PORTABLE:", error)
+            return f"Encontré {target}, pero no pude abrir su ejecutable."
 
     def open_program(self, target):
         target = self.clean_target(target)
@@ -492,6 +773,9 @@ class WindowsController:
                 self.scan_programs()
                 info = self.find_program(target, exclude_uninstallers=True)
         if not info:
+            portable_result = self.open_portable_game(target)
+            if portable_result:
+                return portable_result
             return (
                 f"No encontré el programa {target}. "
                 "Si lo acabas de instalar, di: actualiza la lista de programas."
@@ -601,14 +885,17 @@ class WindowsController:
             return f"No pude iniciar la desinstalación de {name}."
 
     # ------------------------------------------------------------------
-    # INSTALAR PROGRAMAS (vía winget — catálogo oficial de Microsoft)
+    # INSTALAR PROGRAMAS (vía gestores de paquetes oficiales: winget,
+    # y si no encuentra el paquete ahí, Chocolatey y luego Scoop)
     #
-    # Se usa winget en vez de descargar instaladores de sitios web
-    # directamente: winget ya verifica que cada paquete venga de su
-    # editor oficial (Discord, VideoLAN/VLC, Google, etc.) y sabe
-    # instalar cada uno en modo silencioso sin que tengamos que
-    # adivinar URLs de descarga que pueden cambiar en cualquier
-    # momento.
+    # Se usan gestores de paquetes en vez de descargar instaladores de
+    # sitios web directamente: los tres verifican el origen de cada
+    # paquete y saben instalar en modo silencioso, sin que Eco
+    # tenga que adivinar URLs de descarga que pueden cambiar en
+    # cualquier momento — y sin el riesgo de correr un .exe bajado de
+    # una página sin verificar. Se prueban en orden y solo se pasa al
+    # siguiente si el anterior no tiene el paquete (no si lo tiene y
+    # falla al instalarlo, para no reintentar innecesariamente).
     # ------------------------------------------------------------------
     def _winget_available(self):
         try:
@@ -622,20 +909,32 @@ class WindowsController:
         except Exception:
             return False
 
-    def install_program(self, name):
-        name = str(name).strip().strip('"\'')
-
-        if not name:
-            return "¿Qué programa quieres que instale?"
-
-        if not self._winget_available():
-            return (
-                "No encontré 'winget' en este equipo. Instálalo desde "
-                "la Microsoft Store buscando 'App Installer' e inténtalo de nuevo."
+    def _choco_available(self):
+        try:
+            result = subprocess.run(
+                ["choco", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
             )
+            return result.returncode == 0
+        except Exception:
+            return False
 
+    def _scoop_available(self):
+        try:
+            result = subprocess.run(
+                ["scoop", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def _install_with_winget(self, name):
         print(f"INSTALANDO CON WINGET: {name}")
-
         try:
             result = subprocess.run(
                 [
@@ -647,7 +946,8 @@ class WindowsController:
                     "--disable-interactivity",
                 ],
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=300
             )
 
@@ -655,39 +955,144 @@ class WindowsController:
             print("SALIDA WINGET:", output)
 
             if result.returncode == 0:
-                # Fuerza que el próximo "abre X" reescanee los
-                # programas, para que encuentre lo recién instalado
-                # sin esperar el enfriamiento normal de 5 minutos.
-                self._last_scan_time = 0
-                return f"Instalé {name} correctamente."
+                return f"Instalé {name} con winget."
 
             lowered = output.lower()
 
-            if "no package found" in lowered or "no se encontr" in lowered:
-                return (
-                    f"No encontré {name} en el catálogo oficial de "
-                    "aplicaciones. Revisa el nombre exacto."
-                )
-
             if "multiple packages found" in lowered or "varios paquetes" in lowered:
                 return (
-                    f"Encontré varias aplicaciones parecidas a {name}. "
-                    "Sé más específico con el nombre."
+                    f"Encontré varias aplicaciones parecidas a {name} en "
+                    "winget. Sé más específico con el nombre."
                 )
 
+            if "no package found" in lowered or "no se encontr" in lowered:
+                # None = "no está en este catálogo", para seguir
+                # probando con el siguiente gestor de paquetes.
+                return None
+
             return (
-                f"No pude instalar {name}. Es posible que Windows haya "
-                "pedido tu confirmación en una ventana aparte — revisa la pantalla."
+                f"Encontré {name} en winget, pero no pude instalarlo. Es "
+                "posible que Windows haya pedido tu confirmación en una "
+                "ventana aparte — revisa la pantalla."
             )
 
         except subprocess.TimeoutExpired:
             return (
-                f"La instalación de {name} está tardando demasiado. "
-                "Revisa si Windows pidió alguna confirmación en pantalla."
+                f"La instalación de {name} con winget está tardando "
+                "demasiado. Revisa si Windows pidió alguna confirmación "
+                "en pantalla."
             )
         except Exception as error:
-            print("ERROR INSTALANDO:", error)
-            return f"Ocurrió un error instalando {name}."
+            print("ERROR INSTALANDO CON WINGET:", error)
+            return None
+
+    def _install_with_choco(self, name):
+        print(f"INSTALANDO CON CHOCOLATEY: {name}")
+        try:
+            result = subprocess.run(
+                ["choco", "install", name, "-y", "--no-progress"],
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300
+            )
+
+            output = (result.stdout or "") + (result.stderr or "")
+            print("SALIDA CHOCOLATEY:", output)
+
+            if result.returncode == 0:
+                return f"Instalé {name} con Chocolatey."
+
+            lowered = output.lower()
+
+            if "unable to find package" in lowered or "0/1" in lowered:
+                return None
+
+            return (
+                f"Encontré {name} en Chocolatey, pero no pude instalarlo."
+            )
+
+        except subprocess.TimeoutExpired:
+            return (
+                f"La instalación de {name} con Chocolatey está tardando "
+                "demasiado."
+            )
+        except Exception as error:
+            print("ERROR INSTALANDO CON CHOCOLATEY:", error)
+            return None
+
+    def _install_with_scoop(self, name):
+        print(f"INSTALANDO CON SCOOP: {name}")
+        try:
+            result = subprocess.run(
+                ["scoop", "install", name],
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300
+            )
+
+            output = (result.stdout or "") + (result.stderr or "")
+            print("SALIDA SCOOP:", output)
+
+            if result.returncode == 0:
+                return f"Instalé {name} con Scoop."
+
+            lowered = output.lower()
+
+            if "couldn't find" in lowered or "no se encontr" in lowered:
+                return None
+
+            return f"Encontré {name} en Scoop, pero no pude instalarlo."
+
+        except subprocess.TimeoutExpired:
+            return (
+                f"La instalación de {name} con Scoop está tardando "
+                "demasiado."
+            )
+        except Exception as error:
+            print("ERROR INSTALANDO CON SCOOP:", error)
+            return None
+
+    def install_program(self, name):
+        name = str(name).strip().strip('"\'')
+
+        if not name:
+            return "¿Qué programa quieres que instale?"
+
+        managers = (
+            (self._winget_available, self._install_with_winget),
+            (self._choco_available, self._install_with_choco),
+            (self._scoop_available, self._install_with_scoop),
+        )
+
+        any_available = False
+
+        for is_available, install_with in managers:
+            if not is_available():
+                continue
+            any_available = True
+            result = install_with(name)
+            if result is not None:
+                if result.startswith(f"Instalé {name}"):
+                    # Fuerza que el próximo "abre X" reescanee los
+                    # programas, para que encuentre lo recién instalado
+                    # sin esperar el enfriamiento normal de 5 minutos.
+                    self._last_scan_time = 0
+                return result
+
+        if not any_available:
+            return (
+                "No encontré ningún gestor de paquetes instalado. "
+                "Instala 'App Installer' desde la Microsoft Store para "
+                "tener winget, Chocolatey desde https://chocolatey.org/install, "
+                "o Scoop desde https://scoop.sh, e inténtalo de nuevo."
+            )
+
+        return (
+            f"No encontré {name} en ninguno de los catálogos disponibles "
+            "(winget, Chocolatey, Scoop). Revisa el nombre exacto."
+        )
 
     # ------------------------------------------------------------------
     # CONTROL DEL SISTEMA
@@ -789,6 +1194,51 @@ class WindowsController:
         except Exception:
             return "No pude abrir esa página."
 
+    def open_system(self, numbers):
+        """
+        Abre una o más de las páginas de self.custom_systems.
+        'numbers' es una lista de claves a abrir (ej. ["1"] o
+        ["1", "2"]).
+        """
+        opened = []
+        missing = []
+
+        for number in numbers:
+            url = self.custom_systems.get(str(number).strip())
+            if url:
+                self.open_url(url)
+                opened.append(str(number))
+            else:
+                missing.append(str(number))
+
+        if not opened:
+            return f"No tengo configurado el sistema {', '.join(missing)}."
+
+        label = " y ".join(opened)
+        response = (
+            f"Abriendo el sistema {label}."
+            if len(opened) == 1
+            else f"Abriendo los sistemas {label}."
+        )
+
+        if missing:
+            response += f" No tengo configurado el sistema {', '.join(missing)}."
+
+        return response
+
+    def open_sign_in_options(self):
+        """Abre la pantalla oficial de Windows para PIN y contraseña."""
+        try:
+            os.startfile("ms-settings:signinoptions")
+            return (
+                "Abrí las opciones de inicio de sesión. Selecciona PIN de "
+                "Windows Hello y luego Cambiar. Windows te pedirá confirmar "
+                "tu identidad."
+            )
+        except Exception as error:
+            print("ERROR ABRIENDO OPCIONES DE INICIO DE SESIÓN:", error)
+            return "No pude abrir las opciones de inicio de sesión de Windows."
+
     def open_file(self, target):
         target = os.path.expandvars(os.path.expanduser(str(target).strip()))
         if not os.path.isfile(target):
@@ -798,6 +1248,49 @@ class WindowsController:
             return f"Abriendo {target}."
         except Exception:
             return f"No pude abrir {target}."
+
+    def open_desktop_application(self, target):
+        """Abre un acceso directo o ejecutable ubicado en el Escritorio.
+
+        No depende del catálogo de programas de Windows: revisa el
+        Escritorio real del usuario, incluso si OneDrive lo redirigió.
+        """
+        requested = self.normalize_text(target)
+        if not requested:
+            return "¿Qué aplicación del Escritorio quieres ejecutar?"
+
+        desktop = self._resolve_shell_folder(
+            self.FOLDER_LOCATIONS["escritorio"][0],
+            self.FOLDER_LOCATIONS["escritorio"][1]
+        )
+        if not os.path.isdir(desktop):
+            return "No encontré el Escritorio de este usuario."
+
+        candidates = []
+        for item in os.listdir(desktop):
+            path = os.path.join(desktop, item)
+            if not os.path.isfile(path):
+                continue
+            extension = os.path.splitext(item)[1].lower()
+            if extension not in {".lnk", ".exe"}:
+                continue
+            display_name = os.path.splitext(item)[0]
+            normalized_name = self.normalize_text(display_name)
+            if normalized_name == requested:
+                candidates.insert(0, (display_name, path))
+            elif requested in normalized_name:
+                candidates.append((display_name, path))
+
+        if not candidates:
+            return f"No encontré {target} como acceso directo o ejecutable en el Escritorio."
+
+        display_name, path = candidates[0]
+        try:
+            os.startfile(path)
+            return f"Ejecutando {display_name} desde el Escritorio."
+        except Exception as error:
+            print("ERROR ABRIENDO APLICACIÓN DEL ESCRITORIO:", error)
+            return f"No pude ejecutar {display_name} desde el Escritorio."
 
     # ------------------------------------------------------------------
     # CREAR CARPETA

@@ -1,19 +1,18 @@
-from core.brain import Brain
+"""Prueba manual del cerebro; no forma parte de la suite automatizada."""
 
 
-brain = Brain()
+def main():
+    from core.brain import Brain
+
+    brain = Brain()
+
+    while True:
+        text = input("Tú: ")
+        if text.lower() == "salir":
+            break
+        print("\nRESULTADO:")
+        print(brain.think(text))
 
 
-while True:
-
-    text = input("Tú: ")
-
-    if text.lower() == "salir":
-        break
-
-    result = brain.think(text)
-
-    print()
-    print("RESULTADO:")
-    print(result)
-    print()
+if __name__ == "__main__":
+    main()

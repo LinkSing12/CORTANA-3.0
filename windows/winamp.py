@@ -47,7 +47,7 @@ class WinampController:
 
     def __init__(self, music_folders=None):
 
-        # Carpetas donde Cortana busca el archivo cuando le pides
+        # Carpetas donde Eco busca el archivo cuando le pides
         # una canción por nombre. Ajusta esto a donde tengas tu
         # música real si no está en la carpeta por defecto.
         self.music_folders = music_folders or [
@@ -222,7 +222,7 @@ class WinampController:
         return None
 
     # ------------------------------------------------------------------
-    # ÓRDENES DE ALTO NIVEL (lo que usa Cortana)
+    # ÓRDENES DE ALTO NIVEL (lo que usa Eco)
     # ------------------------------------------------------------------
     def play_by_name(self, name, winamp_path=None):
         if not self.ensure_open(winamp_path):
@@ -236,7 +236,8 @@ class WinampController:
             )
 
         if self.play_file(song_path):
-            return f"Reproduciendo {os.path.basename(song_path)} en Winamp."
+            nombre = os.path.splitext(os.path.basename(song_path))[0]
+            return f"Reproduciendo {nombre}."
 
         return "Encontré la canción, pero no pude comunicarme con Winamp."
 
@@ -260,6 +261,6 @@ class WinampController:
         index = number - 1  # el usuario cuenta desde 1
 
         if self.play_position(index):
-            return f"Reproduciendo la canción número {number} en Winamp."
+            return f"Reproduciendo la canción número {number}."
 
         return "No pude comunicarme con Winamp."

@@ -4,12 +4,12 @@ from typing import List, Dict, Optional
 
 
 # ============================================================
-# CORTANA 3.0
+# ECO 3.0
 # GESTOR DE PROGRAMAS Y PROCESOS DE WINDOWS
 # ============================================================
 
 
-# Procesos que Cortana NO debe cerrar automáticamente.
+# Procesos que Eco NO debe cerrar automáticamente.
 PROCESOS_PROTEGIDOS = {
     "system",
     "system idle process",
@@ -314,7 +314,7 @@ def informacion_proceso(nombre: str) -> Optional[Dict]:
 if __name__ == "__main__":
 
     print("=" * 60)
-    print("CORTANA 3.0 - GESTOR DE PROCESOS")
+    print("ECO 3.0 - GESTOR DE PROCESOS")
     print("=" * 60)
 
     procesos = obtener_programas_en_ejecucion()

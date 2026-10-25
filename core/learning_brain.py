@@ -199,3 +199,13 @@ class LearningBrain:
     def count(self):
 
         return self.learning.count_commands()
+
+    # =========================================================
+    # CONOCIMIENTO APRENDIDO
+    # =========================================================
+
+    def remember_knowledge(self, question):
+        return self.learning.find_knowledge(question)
+
+    def teach_knowledge(self, question, answer, source=""):
+        return self.learning.learn_knowledge(question, answer, source)

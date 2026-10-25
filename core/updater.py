@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import zipfile
 
 import requests
@@ -9,7 +10,7 @@ import requests
 
 class Updater:
     """
-    Revisa, descarga e instala actualizaciones de Cortana publicadas
+    Revisa, descarga e instala actualizaciones de Eco publicadas
     como "Releases" en un repositorio de GitHub.
 
     Cómo funciona:
@@ -23,10 +24,8 @@ class Updater:
        proyecto actual.
     4. Actualiza el archivo VERSION local.
 
-    IMPORTANTE: en tu repositorio de GitHub, agrega un .gitignore
-    que excluya la carpeta data/ (o al menos los .json con datos
-    reales), para que una actualización nunca sobreescriba tu
-    memoria, tus comandos aprendidos, ni tu caché de programas.
+    Los datos locales (ver PROTECTED_PATHS) nunca se sobreescriben,
+    aunque el zip del release los traiga.
     """
 
     # =====================================================
@@ -34,6 +33,24 @@ class Updater:
     # Formato: "usuario/nombre-del-repo"
     # =====================================================
     GITHUB_REPO = "LinkSing12/CORTANA-3.0"
+
+    # =====================================================
+    # RUTAS QUE UNA ACTUALIZACIÓN NUNCA PISA
+    #
+    # Son datos de ESTA PC (memoria, aprendizaje, sesión de
+    # WhatsApp, entorno de Python). Aunque algún release viejo
+    # los traiga dentro del zip, se saltan — así actualizar nunca
+    # borra lo que Eco aprendió. Rutas relativas a la raíz, con "/".
+    # =====================================================
+    PROTECTED_PATHS = (
+        "data",
+        "memory/data.json",
+        "core/learned_skills.py",
+        ".venv",
+        ".git",
+        ".last_update_check",
+        "VERSION",
+    )
 
     def __init__(self, project_root=None, version_file=None):
 
@@ -46,6 +63,36 @@ class Updater:
         self.api_url = (
             f"https://api.github.com/repos/{self.GITHUB_REPO}/releases/latest"
         )
+
+        self.last_check_file = os.path.join(
+            self.project_root, ".last_update_check"
+        )
+
+    # =========================================================
+    # ENFRIAMIENTO DE CHEQUEOS
+    #
+    # GitHub limita las peticiones sin autenticar a 60 por hora
+    # por IP. Reiniciar Eco muchas veces seguidas (normal
+    # durante pruebas) puede agotar ese límite rápido si se
+    # consulta en cada arranque. Esto evita eso: el chequeo
+    # AUTOMÁTICO al arrancar respeta un enfriamiento; el comando
+    # explícito "busca actualizaciones" siempre consulta de verdad,
+    # porque ahí el usuario lo está pidiendo a propósito.
+    # =========================================================
+    def should_check_now(self, min_interval_seconds=1800):
+        try:
+            with open(self.last_check_file, "r", encoding="utf-8") as f:
+                last = float(f.read().strip())
+        except Exception:
+            return True
+        return (time.time() - last) >= min_interval_seconds
+
+    def _mark_checked_now(self):
+        try:
+            with open(self.last_check_file, "w", encoding="utf-8") as f:
+                f.write(str(time.time()))
+        except Exception:
+            pass
 
     # =========================================================
     # VERSIÓN LOCAL
@@ -91,7 +138,7 @@ class Updater:
             "changelog": str,
         }
         o None si no se pudo consultar (sin internet, repo mal
-        configurado, GitHub caído, etc.)
+        configurado, GitHub caído, límite de peticiones, etc.)
         """
 
         if self.GITHUB_REPO == "TU_USUARIO/TU_REPO":
@@ -103,6 +150,16 @@ class Updater:
 
         try:
             response = requests.get(self.api_url, timeout=timeout)
+            self._mark_checked_now()
+
+            if response.status_code == 403 and "rate limit" in response.text.lower():
+                print(
+                    "⚠️ ACTUALIZADOR: se agotó el límite de peticiones "
+                    "sin autenticar de GitHub (60/hora). Intenta de "
+                    "nuevo en un rato."
+                )
+                return None
+
             response.raise_for_status()
             data = response.json()
         except Exception as error:
@@ -148,7 +205,7 @@ class Updater:
     # =========================================================
     def apply_update(self, zip_path):
 
-        extract_dir = tempfile.mkdtemp(prefix="cortana_update_")
+        extract_dir = tempfile.mkdtemp(prefix="eco_update_")
 
         try:
             with zipfile.ZipFile(zip_path, "r") as zf:
@@ -167,7 +224,7 @@ class Updater:
             else:
                 source_root = extract_dir
 
-            self._merge_copy_dir(source_root, self.project_root)
+            self._merge_copy_dir(source_root, self.project_root, source_root)
 
             return True
 
@@ -178,7 +235,14 @@ class Updater:
             except Exception:
                 pass
 
-    def _merge_copy_dir(self, src_dir, dst_dir):
+    def _is_protected(self, rel_path):
+        rel_path = rel_path.replace("\\", "/").strip("/")
+        for protected in self.PROTECTED_PATHS:
+            if rel_path == protected or rel_path.startswith(protected + "/"):
+                return True
+        return False
+
+    def _merge_copy_dir(self, src_dir, dst_dir, source_root):
         os.makedirs(dst_dir, exist_ok=True)
 
         for item in os.listdir(src_dir):
@@ -186,8 +250,12 @@ class Updater:
             src = os.path.join(src_dir, item)
             dst = os.path.join(dst_dir, item)
 
+            if self._is_protected(os.path.relpath(src, source_root)):
+                print(f"ACTUALIZADOR: se conserva el archivo local {item}")
+                continue
+
             if os.path.isdir(src):
-                self._merge_copy_dir(src, dst)
+                self._merge_copy_dir(src, dst, source_root)
             else:
                 try:
                     shutil.copy2(src, dst)
@@ -200,7 +268,7 @@ class Updater:
     def check_download_and_apply(self):
         """
         Hace todo el proceso de una vez. Devuelve un mensaje de
-        texto listo para que Cortana lo diga en voz alta.
+        texto listo para que Eco lo diga en voz alta.
         """
 
         info = self.check_for_update()
@@ -222,7 +290,7 @@ class Updater:
             self.set_local_version(info["latest_version"])
 
             return (
-                f"Actualicé Cortana de la versión {info['current_version']} "
+                f"Actualicé Eco de la versión {info['current_version']} "
                 f"a la {info['latest_version']}. Reinicia el programa para "
                 "que tome efecto."
             )
