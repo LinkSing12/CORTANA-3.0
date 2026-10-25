@@ -1,5 +1,6 @@
 import json
 import os
+import difflib
 from datetime import datetime
 
 
@@ -375,3 +376,55 @@ class Learning:
         self._write({})
 
         return True
+
+    # =========================================================
+    # CONOCIMIENTO APRENDIDO
+    # =========================================================
+
+    def learn_knowledge(self, question, answer, source=""):
+        """Guarda una respuesta obtenida para reutilizarla localmente."""
+        question = self.normalize(question).strip("¿?¡!.,;: ")
+        answer = str(answer).strip()
+
+        if not question or not answer:
+            return False
+
+        data = self._read()
+        knowledge = data.setdefault("__knowledge__", {})
+        knowledge[question] = {
+            "answer": answer,
+            "source": str(source).strip(),
+            "learned_at": datetime.now().isoformat(timespec="seconds"),
+            "uses": 0,
+        }
+        self._write(data)
+        return True
+
+    def find_knowledge(self, question):
+        """Busca primero una coincidencia exacta y luego una muy cercana."""
+        question = self.normalize(question).strip("¿?¡!.,;: ")
+        if not question:
+            return None
+
+        data = self._read()
+        knowledge = data.get("__knowledge__", {})
+        if not isinstance(knowledge, dict):
+            return None
+
+        key = question
+        if key not in knowledge:
+            matches = difflib.get_close_matches(
+                question, list(knowledge.keys()), n=1, cutoff=0.92
+            )
+            if not matches:
+                return None
+            key = matches[0]
+
+        entry = knowledge.get(key)
+        if not isinstance(entry, dict) or not entry.get("answer"):
+            return None
+
+        entry["uses"] = int(entry.get("uses", 0)) + 1
+        entry["last_used"] = datetime.now().isoformat(timespec="seconds")
+        self._write(data)
+        return entry

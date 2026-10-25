@@ -21,7 +21,7 @@ class Brain:
     def is_available(self):
         """
         Chequeo rápido (0.5s máx) de si Ollama está corriendo.
-        Útil para avisar al usuario apenas arranca Cortana, en vez
+        Útil para avisar al usuario apenas arranca Eco, en vez
         de que se entere comando por comando con un error de
         conexión repetido.
         """
@@ -48,7 +48,7 @@ class Brain:
                     # Mantiene el modelo cargado en memoria 30 min
                     # entre comandos, para no pagar el costo de
                     # recarga (varios segundos con un modelo de 14B)
-                    # cada vez que Cortana lleva un rato sin hablarle.
+                    # cada vez que Eco lleva un rato sin hablarle.
                     "keep_alive": "30m"
                 },
                 timeout=60
@@ -196,7 +196,7 @@ class Brain:
         # =====================================================
         # INTENTS VÁLIDOS
         # Debe reflejar TODO lo que router.py sabe ejecutar,
-        # o Cortana "olvidará" esas órdenes aunque el modelo
+        # o Eco "olvidará" esas órdenes aunque el modelo
         # las clasifique correctamente.
         # =====================================================
         valid_intents = {
@@ -295,7 +295,7 @@ class Brain:
 
     def build_prompt(self, text, context):
         return f"""
-Eres el cerebro de CORTANA, un asistente personal para Windows.
+Eres el cerebro de ECO, un asistente personal para Windows.
 
 Tu trabajo es interpretar exactamente lo que el usuario quiere hacer.
 
@@ -394,7 +394,7 @@ PREGUNTAS DE SEGUIMIENTO (MUY IMPORTANTE)
 =====================================================
 
 Debajo tienes el HISTORIAL RECIENTE de la conversación (lo último que
-el usuario preguntó y lo que Cortana respondió). Si la pregunta ACTUAL
+el usuario preguntó y lo que Eco respondió). Si la pregunta ACTUAL
 del usuario depende de algo mencionado ahí (usa palabras como "él",
 "ella", "eso", "ahí", "y", o simplemente no repite el tema del que se
 viene hablando), usa el historial para entender a qué se refiere.
@@ -407,7 +407,7 @@ ahí mismo, dentro del target.
 Ejemplo:
 HISTORIAL RECIENTE:
 Usuario: Quién fue Juan Pablo Duarte
-Cortana: Juan Pablo Duarte fue uno de los padres de la patria...
+Eco: Juan Pablo Duarte fue uno de los padres de la patria...
 
 Usuario actual: Y cuándo murió?
 {{"intent":"WEB_SEARCH","target":"Cuándo murió Juan Pablo Duarte","confidence":0.99}}

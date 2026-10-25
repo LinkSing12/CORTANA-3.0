@@ -2,6 +2,17 @@ import speech_recognition as sr
 import re
 import time
 
+# Anulación de ruido propia (más allá del umbral de energía del
+# micrófono). Es opcional: si estas dos librerías no están instaladas,
+# Eco sigue funcionando exactamente igual que antes, solo sin
+# este paso extra de limpieza de audio.
+try:
+    import numpy as np
+    import noisereduce as nr
+except ImportError:
+    np = None
+    nr = None
+
 
 class Listener:
 
@@ -14,7 +25,7 @@ class Listener:
     #   "en winamp" -> se transcribió como "en queens"
     #
     # Cada entrada es (patrón regex, reemplazo). Se aplican sobre
-    # la frase completa reconocida, ANTES de que Cortana intente
+    # la frase completa reconocida, ANTES de que Eco intente
     # interpretarla. Están limitadas al contexto "en X" para no
     # arruinar frases legítimas (ej. "toca queen" para el grupo
     # de rock sigue funcionando normal; solo se corrige cuando
@@ -22,12 +33,24 @@ class Listener:
     #
     # Si notas otra palabra que Google confunde seguido, agrega
     # una línea aquí con el mismo formato.
+    #
+    # "windows" por "winamp" es otro caso confirmado (fonéticamente
+    # se parecen: "win-" al principio). Se corrige SOLO en los dos
+    # contextos donde "windows" no tiene sentido como orden real
+    # (nadie dice "reproduce X en Windows" ni "abre Windows" como
+    # comando de voz), para no arruinar otras frases legítimas.
     # =========================================================
     PHONETIC_CORRECTIONS = [
         (r"\ben\s+queens?\b", "en winamp"),
         (r"\ben\s+kings?\b", "en winamp"),
         (r"\ben\s+wi\s*namp\b", "en winamp"),
         (r"\bwi\s*namp\b", "winamp"),
+        (
+            r"\b(reproduce|reproducir|pon|poner|toca|tocar|play)"
+            r"\s+(.+?)\s+en\s+windows\b",
+            r"\1 \2 en winamp",
+        ),
+        (r"\b(abre|abrir|[aá]breme)\s+windows\b", r"\1 winamp"),
     ]
 
     def __init__(self):
@@ -42,7 +65,7 @@ class Listener:
 
         # IMPORTANTE: dynamic_energy_threshold en True hace que el
         # umbral se siga recalculando DURANTE toda la sesión, no solo
-        # al inicio. Si Cortana habla por las bocinas y el micrófono
+        # al inicio. Si Eco habla por las bocinas y el micrófono
         # capta ese sonido, o hay ruido variable (ventilador, etc.),
         # el umbral puede saltar de forma errática (visto en pruebas
         # reales: 150 -> 83 -> 2333 -> 5554 entre intentos), causando
@@ -158,6 +181,58 @@ class Listener:
         return corrected
 
     # =========================================================
+    # ANULACIÓN DE RUIDO PROPIA
+    #
+    # El umbral de energía (arriba, en __init__) solo decide CUÁNDO
+    # empezaste y terminaste de hablar; no limpia el ruido de fondo
+    # constante (ventilador, eco de las bocinas, etc.) que queda
+    # DENTRO de lo ya grabado. Esto aplica reducción de ruido
+    # espectral sobre ese audio, antes de mandarlo a reconocer.
+    #
+    # stationary=True asume que el ruido de fondo es más o menos
+    # constante durante toda la frase (el caso típico de un
+    # ventilador o el zumbido de la habitación), y lo estima del
+    # propio audio capturado, sin necesitar una muestra de ruido
+    # aparte.
+    # =========================================================
+
+    def _reduce_noise(self, audio):
+
+        if np is None or nr is None:
+            return audio
+
+        try:
+
+            samples = np.frombuffer(
+                audio.get_raw_data(), dtype=np.int16
+            ).astype(np.float32)
+
+            cleaned = nr.reduce_noise(
+                y=samples,
+                sr=audio.sample_rate,
+                stationary=True,
+            )
+
+            cleaned = np.clip(
+                cleaned, -32768, 32767
+            ).astype(np.int16)
+
+            return sr.AudioData(
+                cleaned.tobytes(),
+                audio.sample_rate,
+                audio.sample_width,
+            )
+
+        except Exception as error:
+
+            print(
+                "⚠️ No se pudo aplicar la anulación de ruido:",
+                error
+            )
+
+            return audio
+
+    # =========================================================
     # ESCUCHAR
     # =========================================================
 
@@ -192,6 +267,19 @@ class Listener:
                     "mal calibrado para el ruido de tu ambiente "
                     "(no detecta el silencio al terminar de hablar)."
                 )
+
+            # =================================================
+            # ANULACIÓN DE RUIDO PROPIA
+            # =================================================
+
+            t_denoise = time.time()
+
+            audio = self._reduce_noise(audio)
+
+            print(
+                f"🔇 ANULACIÓN DE RUIDO: "
+                f"{time.time() - t_denoise:.2f}s"
+            )
 
             # =================================================
             # RECONOCIMIENTO

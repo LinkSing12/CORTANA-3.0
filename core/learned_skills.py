@@ -11,22 +11,30 @@ import webbrowser
 import requests
 
 
-
 # Aprendido: guarda y ejecuta lo anterior
 # Fecha: 2026-08-23T11:38:27
-def skill_guarda_y_ejecuta_lo_anterior(target):  
-    try:  
-        if not target:  
-            return "No se puede guardar o ejecutar el código. Por favor, proporcione contenido válido."  
-        import tempfile  
-        import sys  
-        with tempfile.NamedTemporaryFile(mode='w+', suffix='.py', delete=False) as tmp:  
-            tmp.write(target)  
-            tmp_path = tmp.name  
-        subprocess.run([sys.executable, tmp_path], check=True)  
-        return "El código ha sido guardado y ejecutado correctamente."  
-    except Exception as e:  
-        return f"Error al guardar o ejecutar el código: {str(e)}"
+#
+# ATENCIÓN — FUNCIÓN NEUTRALIZADA (revisión de seguridad):
+# La versión original de esta función escribía el texto recibido
+# en un archivo .py temporal y lo EJECUTABA directamente con
+# subprocess.run([sys.executable, tmp_path]) — esto es, en la
+# práctica, equivalente a exec() sobre cualquier texto que llegara
+# aquí (por ejemplo, algo mal interpretado desde un micrófono),
+# pero sin activar los filtros de seguridad de skill_learner.py
+# porque esos filtros buscan literalmente la palabra "exec(" y
+# esto la evita. En vez de eso, "guarda y ejecuta lo anterior"
+# ahora se resuelve de forma segura con
+# core/context_resolver.py, reutilizando la última intención ya
+# validada (OPEN_PROGRAM, PLAY_MEDIA, etc.) en lugar de generar y
+# correr código nuevo.
+def skill_guarda_y_ejecuta_lo_anterior(target):
+    return (
+        "Esta habilidad fue desactivada por seguridad: ejecutaba "
+        "código arbitrario. \"Hazlo de nuevo\" / \"repite lo "
+        "anterior\" ahora se maneja de forma segura mediante el "
+        "resolvedor de contexto, reutilizando la última orden "
+        "válida en vez de generar código nuevo."
+    )
 
 
 # =====================================================

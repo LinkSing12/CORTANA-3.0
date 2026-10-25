@@ -9,9 +9,14 @@ from core.web_search import WebSearch
 
 
 class Router:
-    def __init__(self, windows, media):
+    def __init__(self, windows, media, brain=None):
         self.windows = windows
         self.media = media
+        # Opcional: si se pasa, answer_web_search() le pide a Ollama
+        # que REDACTE una respuesta directa a partir de los
+        # resultados, en vez de solo leer el primer fragmento. Si es
+        # None (o falla), cae al comportamiento anterior.
+        self.brain = brain
         self.chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
         self.chrome_user_data = os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\User Data")
         self.chrome_profile = "Default"
@@ -78,6 +83,14 @@ class Router:
         if intent == "MEMORY_INFO": return self.windows.memory_info()
         if intent == "DISK_INFO": return self.windows.disk_info()
         if intent == "BATTERY_INFO": return self.windows.battery_info()
+        # Brain.build_prompt() ofrece estos intents al modelo, pero antes
+        # no tenían caso aquí: si conversation.py no atrapaba la frase
+        # antes de llegar al cerebro, Qwen podía clasificarla bien y aun
+        # así terminar en "Todavía no sé hacer eso.".
+        if intent == "IDENTITY": return "Soy Eco, tu asistente local."
+        if intent == "GREETING": return "Hola. ¿Qué hacemos?"
+        if intent == "THANKS": return "De nada."
+        if intent == "HOW_ARE_YOU": return "Estoy funcionando perfectamente."
         return "Todavía no sé hacer eso."
 
     def detect_direct_command(self, command):
@@ -147,6 +160,77 @@ class Router:
         url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(query)
         return "Buscando en Google." if self._start_chrome(url) else self.windows.open_url(url)
 
+    def _clean_snippet(self, text):
+        """
+        DuckDuckGo suele traer el fragmento con basura que suena muy
+        rara al leerla en voz alta: un sello de fecha relativa al
+        principio ("2 weeks ago -"), rayas largas en medio de la
+        oración, y comillas/apóstrofes "tipográficos" en vez de los
+        normales. Se limpia antes de que Eco lo diga.
+        """
+        text = str(text or "").strip()
+
+        text = re.sub(
+            r"^\s*\d+\s+"
+            r"(?:second|minute|hour|day|week|month|year)s?\s+ago\s*[-–—]\s*",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        text = text.replace("—", ", ").replace("–", ", ")
+        text = (
+            text.replace("\u201c", '"').replace("\u201d", '"')
+            .replace("\u2018", "'").replace("\u2019", "'")
+        )
+
+        return re.sub(r"\s+", " ", text).strip(" ,")
+
+    def _synthesize_answer(self, query, results):
+        """
+        Le pide a Ollama que REDACTE una respuesta directa a la
+        pregunta a partir de los resultados, en vez de solo leer el
+        fragmento mejor rankeado (que muchas veces habla del tema
+        pero no responde lo que se preguntó). Devuelve None si no hay
+        brain disponible o algo falla, para que el que llama caiga al
+        respaldo de siempre.
+        """
+        if not self.brain:
+            return None
+
+        fragments = []
+        for result in results[:4]:
+            title = self._clean_snippet(result.get("title", ""))
+            body = self._clean_snippet(result.get("body", ""))
+            if title or body:
+                fragments.append(f"- {title}: {body}" if title else f"- {body}")
+
+        if not fragments:
+            return None
+
+        prompt = (
+            "Eres el asistente de voz de Eco. Con base en estos "
+            "resultados de una búsqueda web, redacta una respuesta "
+            "DIRECTA y CONCISA en español (2 a 4 frases) que conteste "
+            "exactamente la pregunta del usuario. No digas \"según "
+            "estos resultados\" ni cosas parecidas — responde como si "
+            "ya lo supieras. Si la información no alcanza para "
+            "responder con certeza, dilo brevemente en vez de "
+            "inventar.\n\n"
+            f"PREGUNTA: {query}\n\n"
+            "RESULTADOS:\n" + "\n".join(fragments) + "\n\n"
+            "RESPUESTA:"
+        )
+
+        try:
+            answer = self.brain.generate(prompt)
+        except Exception as error:
+            print("ERROR SINTETIZANDO RESPUESTA:", error)
+            return None
+
+        answer = self._clean_snippet(answer)
+        return answer or None
+
     # =====================================================
     # BÚSQUEDA REAL EN INTERNET (DuckDuckGo vía ddgs)
     # =====================================================
@@ -165,9 +249,15 @@ class Router:
             # Respaldo: si no hay resultados, al menos abre la búsqueda en Chrome.
             return self.search_google(query)
 
+        synthesized = self._synthesize_answer(query, results)
+        if synthesized:
+            return synthesized
+
+        # Respaldo: si Ollama no está disponible o falló, se usa el
+        # fragmento mejor rankeado tal cual (comportamiento anterior).
         best = results[0]
-        title = str(best.get("title", "")).strip()
-        body = str(best.get("body", "")).strip()
+        title = self._clean_snippet(best.get("title", ""))
+        body = self._clean_snippet(best.get("body", ""))
 
         answer = body if body else title
         if not answer:

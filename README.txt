@@ -1,4 +1,4 @@
-CORTANA 4.0 - proyecto funcional Windows
+CORTANA 3.0 (Eco) - proyecto funcional Windows
 
 Requisitos:
 - Python 3.11/3.12

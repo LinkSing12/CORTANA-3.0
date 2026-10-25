@@ -25,7 +25,12 @@ class WebSearch:
                 timeout=self.timeout
             ).text(
                 query,
-                region="wt-wt",
+                # Antes "wt-wt" (mundial, sin idioma): DuckDuckGo podía
+                # traer el resultado mejor rankeado en inglés aunque
+                # preguntaras en español (pasaba seguido con temas de
+                # videojuegos y personajes históricos). "es-es" le da
+                # preferencia a resultados en español.
+                region="es-es",
                 safesearch="moderate",
                 max_results=self.max_results
             )
