@@ -3,6 +3,7 @@ import re
 import sys
 import subprocess
 import tempfile
+import threading
 import unicodedata
 
 try:
@@ -115,7 +116,15 @@ class Speaker:
             except Exception:
                 pass
 
+    # Los recordatorios hablan desde su propio hilo: el candado evita
+    # que dos frases suenen encima (pyttsx3 no aguanta dos a la vez).
+    _speak_lock = threading.Lock()
+
     def speak(self, text):
+        with self._speak_lock:
+            self._speak(text)
+
+    def _speak(self, text):
 
         safe_print(f"Eco: {text}")
         self._quitados = {}
