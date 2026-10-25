@@ -24,6 +24,13 @@ from core.updater import Updater
 from core.context_resolver import ContextCommandResolver
 from core.skill_learner import SkillLearner
 from core.whatsapp_client import WhatsAppClient
+from core.reminders import ReminderManager
+from core.notifier import notify
+
+try:
+    import winsound
+except ImportError:
+    winsound = None
 
 
 class Eco:
@@ -101,6 +108,10 @@ class Eco:
         # arranque normal de Eco.
         self.whatsapp = WhatsAppClient()
 
+        # Recordatorios, alarmas y temporizadores (data/reminders.json).
+        # El hilo que avisa arranca en start(), cuando ya hay voz.
+        self.reminders = ReminderManager(on_fire=self._on_reminder_fired)
+
         self.router = Router(
             self.windows,
             self.media,
@@ -172,6 +183,46 @@ class Eco:
             )
 
     # =========================================================
+    # AVISO DE RECORDATORIO / ALARMA / TEMPORIZADOR
+    # Lo llama el hilo de core/reminders.py cuando llega la hora.
+    # =========================================================
+
+    def _on_reminder_fired(self, item, text):
+
+        title = {
+            "alarm": "⏰ Alarma",
+            "timer": "⏱ Temporizador",
+        }.get(item.get("kind"), "🔔 Recordatorio")
+
+        notify(title, text)
+
+        self._update_window(
+            intent="REMINDER_FIRED",
+            target=item.get("message", ""),
+            response=text,
+            status="● ECO LISTA"
+        )
+
+        # Alarmas y temporizadores suenan antes de hablar, para que
+        # se noten aunque estés lejos de la PC.
+        if winsound and item.get("kind") in ("alarm", "timer"):
+            try:
+                for _ in range(3):
+                    winsound.Beep(880, 250)
+                    winsound.Beep(1175, 250)
+            except Exception:
+                pass
+
+        try:
+            self.speaker.speak(text)
+            if item.get("kind") == "alarm":
+                self.speaker.speak(
+                    "Di «pospón la alarma» si quieres cinco minutos más."
+                )
+        except Exception as error:
+            print("ERROR VOZ:", error)
+
+    # =========================================================
     # INICIAR ECO
     # =========================================================
 
@@ -238,6 +289,11 @@ class Eco:
                 "ERROR VOZ:",
                 error
             )
+
+        try:
+            self.reminders.start()
+        except Exception as error:
+            print("ERROR INICIANDO RECORDATORIOS:", error)
 
         voice_thread = threading.Thread(
             target=self._voice_loop,
@@ -857,6 +913,40 @@ class Eco:
                     pass
 
                 return True
+
+        # =====================================================
+        # RECORDATORIOS, ALARMAS Y TEMPORIZADORES
+        # (vía core/reminders.py). Va antes que el resto para que
+        # "pon una alarma" no se confunda con "pon música", y para
+        # que la respuesta a "¿cuándo te lo recuerdo?" llegue aquí.
+        # =====================================================
+
+        try:
+            reminder_result = self.reminders.handle(command)
+        except Exception as error:
+            print("ERROR EN RECORDATORIOS:", error)
+            reminder_result = None
+
+        if reminder_result:
+
+            intent, response = reminder_result
+
+            print()
+            print("LOCAL:", intent)
+            print("ECO:", response)
+
+            self._update_window(
+                intent=intent,
+                response=response,
+                status="● ECO LISTA"
+            )
+
+            try:
+                self.speaker.speak(response)
+            except Exception:
+                pass
+
+            return True
 
         # =====================================================
         # EJECUTAR APLICACIÓN DEL ESCRITORIO
