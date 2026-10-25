@@ -1,4 +1,15 @@
-   data/*.json
-   .venv/
-   __pycache__/
-   *.pyc 
+# Entorno y caches de Python
+.venv/
+__pycache__/
+*.pyc
+
+# Salidas de PyInstaller
+build/
+dist/
+
+# Datos personales (memoria, aprendizaje, sesion de WhatsApp)
+data/*.json
+data/whatsapp_profile/
+
+# Visual Studio
+.vs/
