@@ -13,6 +13,13 @@ except ImportError:
     np = None
     nr = None
 
+# Resta del micrófono la música que suena en la PC. También opcional:
+# sin numpy/soundcard, Eco usa el micrófono normal.
+try:
+    from voice.echo_canceller import EchoCanceller, EchoCancelledMicrophone
+except ImportError:
+    EchoCanceller = None
+
 
 class Listener:
 
@@ -98,7 +105,12 @@ class Listener:
         # MICRÓFONO
         # =====================================================
 
-        self.microphone = sr.Microphone()
+        self.echo_canceller = EchoCanceller() if EchoCanceller else None
+
+        if self.echo_canceller and self.echo_canceller.start():
+            self.microphone = EchoCancelledMicrophone(self.echo_canceller)
+        else:
+            self.microphone = sr.Microphone()
 
         # =====================================================
         # EVITAR REPETICIONES

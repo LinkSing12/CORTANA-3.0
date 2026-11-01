@@ -9,6 +9,11 @@ SpeechRecognition
 pyttsx3
 PyAudio
 
+# --- Escuchar con musica sonando ---
+numpy
+soundcard
+pycaw
+
 # --- Internet ---
 requests
 ddgs
