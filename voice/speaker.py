@@ -319,6 +319,11 @@ class Speaker:
 
         last_error = None
 
+        # El texto sale en UTF-8, pero en Windows Python lee la entrada
+        # en cp1252 si no se le dice otra cosa: la "é" (bytes C3 A9) le
+        # llegaba a Piper como "Ã©", y la voz decía "símbolo de copyright".
+        env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
+
         for command in commands:
             try:
                 result = subprocess.run(
@@ -328,6 +333,7 @@ class Speaker:
                     encoding="utf-8",
                     errors="replace",
                     timeout=30,
+                    env=env,
                 )
                 if result.returncode == 0:
                     return True
