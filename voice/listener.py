@@ -108,6 +108,10 @@ class Listener:
 
         self.last_time = 0
 
+        # Momento en que empezó la última frase. El bucle de voz lo
+        # usa para saber si llegó dentro de la ventana de 30s.
+        self.last_phrase_started = None
+
         # =====================================================
         # CALIBRACIÓN
         # =====================================================
@@ -253,14 +257,21 @@ class Listener:
                     phrase_time_limit=15
                 )
 
-            elapsed = time.time() - t_listen
+            # Duración real de la frase: el tiempo total desde
+            # t_listen también incluye la espera en silencio.
+            phrase_seconds = len(audio.frame_data) / (
+                audio.sample_rate * audio.sample_width
+            )
+
+            self.last_phrase_started = time.time() - phrase_seconds
 
             print(
-                f"🧠 PROCESANDO... (grabó {elapsed:.1f}s, "
+                f"🧠 PROCESANDO... (grabó {phrase_seconds:.1f}s, "
+                f"esperó {time.time() - t_listen - phrase_seconds:.1f}s, "
                 f"umbral actual: {self.recognizer.energy_threshold:.0f})"
             )
 
-            if elapsed >= 14.5:
+            if phrase_seconds >= 14.5:
                 print(
                     "⚠️ Se grabó hasta el tope de 15s. Esto casi "
                     "siempre significa que el umbral de energía está "
