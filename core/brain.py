@@ -279,11 +279,14 @@ class Brain:
                 possible.append(word)
         return possible[-1] if possible else ""
 
-    def generate(self, prompt):
+    def generate(self, prompt, temperature=None):
         try:
+            payload = {"model": self.model, "prompt": prompt, "stream": False, "keep_alive": "30m"}
+            if temperature is not None:
+                payload["options"] = {"temperature": temperature}
             response = requests.post(
                 self.url,
-                json={"model": self.model, "prompt": prompt, "stream": False, "keep_alive": "30m"},
+                json=payload,
                 timeout=60
             )
             response.raise_for_status()
