@@ -88,7 +88,7 @@ class Eco:
         # _strip_wake_word() las acepta todas por igual.
         self.WAKE_WORD_VARIANTS = (
             "eco", "ecko", "esco", "eko", "ecco",
-            "hecko", "ehco", "equo", "heco",
+            "hecko", "ehco", "equo", "heco", "echo",
         )
         self.VOICE_ACTIVE_WINDOW_SECONDS = 30
         self.voice_active = False
@@ -370,8 +370,15 @@ class Eco:
             # acaba de oír necesita "eco" de nuevo para contar.
             # -------------------------------------------------
 
+            # Se mide hasta que EMPEZÓ a hablar, no hasta ahora: grabar
+            # y reconocer la frase no debe gastar la ventana de 30s.
+            phrase_started = (
+                getattr(self.listener, "last_phrase_started", None)
+                or time.time()
+            )
+
             if self.voice_active and (
-                time.time() - self.voice_last_activity
+                phrase_started - self.voice_last_activity
                 > self.VOICE_ACTIVE_WINDOW_SECONDS
             ):
 
@@ -397,8 +404,17 @@ class Eco:
             if self.voice_active:
 
                 # Ya está activa: todo lo que diga cuenta como
-                # orden directa, sin necesitar repetir "eco".
-                command = text
+                # orden directa, sin necesitar repetir "eco" (y si
+                # lo repite igual, se quita para no ensuciar la orden).
+                remainder = self._strip_wake_word(text)
+
+                if remainder == "":
+                    try:
+                        self.speaker.speak("Dime.")
+                    except Exception:
+                        pass
+                else:
+                    command = remainder if remainder else text
 
             else:
 
@@ -437,10 +453,13 @@ class Eco:
                     # Modo pasivo y no dijo "eco": se ignora todo.
                     continue
 
+            # Va ANTES del "continue": si solo dijo "eco", la ventana de
+            # 30s tiene que empezar a contar desde el "Dime.". Si no,
+            # la orden siguiente se descartaba como vencida.
+            self.voice_last_activity = time.time()
+
             if command is None:
                 continue
-
-            self.voice_last_activity = time.time()
 
             if self.is_exit_command(
                 command.lower()
@@ -473,9 +492,10 @@ class Eco:
         """
         Si el texto empieza con alguna variante de la palabra de
         activación ("eco", "ecko", "esco", etc. — ver
-        WAKE_WORD_VARIANTS), devuelve lo que queda después (puede ser
-        cadena vacía si solo dijo la palabra de activación). Si NO
-        empieza con ninguna variante, devuelve None.
+        WAKE_WORD_VARIANTS), con o sin saludo ("hola eco", "oye eco"),
+        devuelve lo que queda después (puede ser cadena vacía si solo
+        dijo la palabra de activación). También la acepta al final
+        ("reproduce la 67 eco"). Si no aparece, devuelve None.
         """
 
         alternativas = "|".join(
@@ -483,15 +503,25 @@ class Eco:
         )
 
         match = re.match(
-            rf"^\s*(?:{alternativas})\b[\s,.:!¡]*",
+            rf"^\s*(?:(?:hola|oye|hey|ey|ok|okay)[\s,]+)?"
+            rf"(?:{alternativas})\b[\s,.:!¡]*",
             text,
             re.IGNORECASE
         )
 
-        if not match:
-            return None
+        if match:
+            return text[match.end():].strip()
 
-        return text[match.end():].strip()
+        match = re.match(
+            rf"^(.*\S)[\s,]+(?:{alternativas})[\s,.!?]*$",
+            text,
+            re.IGNORECASE
+        )
+
+        if match:
+            return match.group(1).strip()
+
+        return None
 
     # =========================================================
     # DETECTAR PETICIÓN EXPLÍCITA DE APRENDER UNA HABILIDAD NUEVA
