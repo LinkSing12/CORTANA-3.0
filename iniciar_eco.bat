@@ -14,6 +14,14 @@ if not exist ".venv\Scripts\python.exe" (
     exit /b 1
 )
 
+REM Eco necesita Ollama para entender lenguaje libre. Si esta instalado
+REM y no esta corriendo, se arranca oculto antes de abrir a Eco.
+where ollama >nul 2>nul
+if not errorlevel 1 (
+    tasklist /FI "IMAGENAME eq ollama.exe" | find /I "ollama.exe" >nul
+    if errorlevel 1 powershell -NoProfile -WindowStyle Hidden -Command "Start-Process ollama -ArgumentList 'serve' -WindowStyle Hidden"
+)
+
 REM /min: abre la ventana minimizada en vez de al frente. Puedes
 REM restaurarla desde la barra de tareas si quieres escribir un
 REM comando por texto en vez de decirlo por voz.
