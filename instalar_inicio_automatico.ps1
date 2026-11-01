@@ -33,7 +33,10 @@ $disparador = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 # IgnoreNew: si por alguna razon la tarea ya esta corriendo (ej. la
 # abriste tu mismo antes de reiniciar), no abre una segunda Eco
 # escuchando el microfono al mismo tiempo.
-$config = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable
+# AllowStartIfOnBatteries: por defecto Windows no arranca la tarea si
+# una laptop esta desenchufada.
+$config = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable `
+    -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
 Register-ScheduledTask -TaskName $nombreTarea `
     -Action $accion -Trigger $disparador -Settings $config -Force | Out-Null
