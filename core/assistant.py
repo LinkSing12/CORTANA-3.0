@@ -15,6 +15,7 @@ from windows.media import MediaController
 from windows.winamp import WinampController
 from windows.wifi import WifiController
 from windows.bluetooth import BluetoothController
+from windows.audio_ducking import AudioDucker
 
 from core.brain import Brain
 from core.router import Router
@@ -93,6 +94,12 @@ class Eco:
         self.VOICE_ACTIVE_WINDOW_SECONDS = 30
         self.voice_active = False
         self.voice_last_activity = 0.0
+
+        # Al oír "eco" baja la música de las otras apps para que la
+        # orden se entienda bien, y la devuelve tras estos segundos
+        # sin actividad (ver _voice_watchdog).
+        self.ducker = AudioDucker()
+        self.VOICE_DUCK_SECONDS = 10
 
         self.brain = Brain()
 
@@ -302,6 +309,11 @@ class Eco:
 
         voice_thread.start()
 
+        threading.Thread(
+            target=self._voice_watchdog,
+            daemon=True
+        ).start()
+
         while True:
 
             try:
@@ -327,6 +339,24 @@ class Eco:
                 break
 
             self.respond(text)
+
+    # =========================================================
+    # DEVOLVER LA MÚSICA
+    # Va en su propio hilo porque _voice_loop se queda esperando en
+    # listen(): si no dices nada más, la música seguiría bajada.
+    # =========================================================
+
+    def _voice_watchdog(self):
+
+        while True:
+
+            time.sleep(1)
+
+            if self.ducker.ducked and (
+                time.time() - self.voice_last_activity
+                > self.VOICE_DUCK_SECONDS
+            ):
+                self.ducker.restore()
 
     # =========================================================
     # ESCUCHAR VOZ
@@ -424,6 +454,9 @@ class Eco:
 
                     self.voice_active = True
 
+                    self.voice_last_activity = time.time()
+                    self.ducker.duck()
+
                     if self.window:
                         try:
                             self.window.show()
@@ -476,6 +509,8 @@ class Eco:
                 print(
                     "ECO CERRADA (por voz)."
                 )
+
+                self.ducker.restore()
 
                 os._exit(0)
 
