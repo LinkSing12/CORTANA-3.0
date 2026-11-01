@@ -2727,6 +2727,26 @@ class Eco:
                     except Exception:
                         pass
 
+                # Además de abrir Google, dice la respuesta.
+                answer = self.router.answer_web_search(
+                    query,
+                    open_browser=False
+                )
+
+                print("ECO:", answer)
+
+                self._update_window(
+                    intent="SEARCH_GOOGLE",
+                    target=query,
+                    response=answer,
+                    status="● ECO LISTA"
+                )
+
+                try:
+                    self.speaker.speak(answer)
+                except Exception:
+                    pass
+
             except Exception as error:
 
                 print(
@@ -2977,6 +2997,12 @@ class Eco:
     # RESPONDER
     # =========================================================
 
+    CHANGING_FACTS = re.compile(
+        r"\b(hoy|ayer|mañana|ahora|actual(?:es|mente)?|últim[oa]s?|ultim[oa]s?|"
+        r"reciente|precio|cuesta|vale|clima|tiempo|noticias?|sale|saldrá|"
+        r"saldra|presidente|población|poblacion|\d{4})\b"
+    )
+
     def respond(self, text):
 
         text = text.strip()
@@ -3019,7 +3045,9 @@ class Eco:
         is_question = "?" in text or command.startswith((
             "que ", "qué ", "quien ", "quién ", "como ", "cómo ",
             "cuando ", "cuándo ", "donde ", "dónde ", "cual ", "cuál ",
-            "por que ", "por qué ", "para que ", "para qué "
+            "por que ", "por qué ", "para que ", "para qué ",
+            "cuanto ", "cuánto ", "cuanta ", "cuánta ", "cuantos ",
+            "cuántos ", "cuantas ", "cuántas ", "en que ", "en qué "
         ))
         if is_question:
             try:
@@ -3449,7 +3477,15 @@ class Eco:
 
             # Las respuestas factuales se convierten en conocimiento
             # local para no depender siempre de Ollama ni de internet.
-            if intent == "WEB_SEARCH" and response:
+            # Solo preguntas de verdad, con respuesta verificada, y que
+            # no cambian con el tiempo: si no, Eco repetía para siempre
+            # una respuesta mala u obsoleta sin volver a buscar.
+            if (
+                intent == "WEB_SEARCH" and response
+                and is_question
+                and self.router.last_answer_reliable
+                and not self.CHANGING_FACTS.search(command)
+            ):
                 try:
                     self.learning_brain.teach_knowledge(text, response)
                     print("CONOCIMIENTO APRENDIDO:", text)

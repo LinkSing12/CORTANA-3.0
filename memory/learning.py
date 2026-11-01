@@ -414,7 +414,9 @@ class Learning:
         key = question
         if key not in knowledge:
             matches = difflib.get_close_matches(
-                question, list(knowledge.keys()), n=1, cutoff=0.92
+                # Muy estricto: "cuándo nació X" y "cuándo murió X" se
+                # parecen mucho, pero piden cosas distintas.
+                question, list(knowledge.keys()), n=1, cutoff=0.97
             )
             if not matches:
                 return None
