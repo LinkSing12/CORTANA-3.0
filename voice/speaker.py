@@ -183,16 +183,37 @@ class Speaker:
         # ("tilde"). Normalizar a la forma compuesta (ñ, á, é...) lo arregla.
         text = unicodedata.normalize("NFC", text)
 
+        # Formato de páginas web: bloques de código fuera, y de un
+        # enlace "[texto](dirección)" solo se dice el texto.
+        text = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
+        text = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", text)
+
         # Direcciones web: leerlas letra por letra es insoportable.
         text = self._URL.sub("el enlace de la pantalla", text)
 
         # Marcas de cita de Wikipedia: [1], [23]
         text = self._CITA.sub("", text)
 
-        # Viñetas al inicio de línea ("- algo", "• algo").
+        # Viñetas al inicio de línea ("- algo", "• algo") y líneas
+        # de relleno ("---", "===").
         text = re.sub(r"(?m)^\s*[-–—•*]\s+", "", text)
+        text = re.sub(r"(?m)^\s*[-=_*]{3,}\s*$", " ", text)
 
         text = text.replace("&", " y ")
+        text = text.replace("@", " arroba ")
+
+        # Símbolos con significado entre números: se dicen con palabras.
+        text = re.sub(
+            r"\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b",
+            lambda m: " de ".join(g for g in m.groups() if g),
+            text
+        )
+        text = re.sub(r"(?<=\d)\s*[-–—]\s*(?=\d)", " a ", text)
+        text = re.sub(r"(?<=\d)\s*\+\s*(?=\d)", " más ", text)
+        text = re.sub(r"(?<![\w.])[-−](?=\d)", "menos ", text)
+
+        # Paréntesis y rayas son una pausa al hablar, no una palabra.
+        text = re.sub(r"[()\[\]{}—–]", ", ", text)
 
         # Extensiones de archivo: que no diga "punto e equis e".
         text = self._EXTENSIONES.sub("", text)
@@ -217,6 +238,11 @@ class Speaker:
                 # "25 °C"); las monedas y el "%" se dejan, la voz los
                 # dice bien ("dólares", "por ciento")
                 or (categoria in ("So", "Sk") and caracter != "°")
+                # símbolos matemáticos, guiones, comillas y corchetes
+                or categoria in ("Sm", "Pd", "Pc", "Ps", "Pe", "Pi", "Pf")
+                # el resto de la puntuación (/, ", ', ¿, ¡...) menos la
+                # que marca pausas o entonación al hablar
+                or (categoria == "Po" and caracter not in ".,;:!?%")
             )
 
             if quitar:
@@ -227,7 +253,9 @@ class Speaker:
 
         text = "".join(limpio)
         text = re.sub(r"\s+([,.;:!?])", r"\1", text)   # "Wikipedia ," -> "Wikipedia,"
-        text = re.sub(r"\s+", " ", text).strip()
+        text = re.sub(r"([,;:])(?:\s*[,;:])+", r"\1", text)  # ", ," -> ","
+        text = re.sub(r",\s*([.!?])", r"\1", text)     # ",." -> "."
+        text = re.sub(r"\s+", " ", text).strip(" ,;:")
 
         self._quitados = quitados
         return text
