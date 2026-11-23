@@ -21,6 +21,28 @@ except ImportError:
     EchoCanceller = None
 
 
+class _ClampedRecognizer(sr.Recognizer):
+    """
+    Recognizer cuyo umbral nunca sale de [min_threshold, max_threshold],
+    ni siquiera cuando speech_recognition lo ajusta solo en medio de una
+    escucha. Con música alta el umbral llegaba a ~4900: las sílabas
+    suaves quedaban por debajo y Eco cortaba la frase a la mitad.
+    """
+
+    min_threshold = 80
+    max_threshold = 2500
+
+    @property
+    def energy_threshold(self):
+        return self._energy_threshold
+
+    @energy_threshold.setter
+    def energy_threshold(self, value):
+        self._energy_threshold = min(
+            max(value, self.min_threshold), self.max_threshold
+        )
+
+
 class Listener:
 
     # =========================================================
@@ -62,7 +84,7 @@ class Listener:
 
     def __init__(self):
 
-        self.recognizer = sr.Recognizer()
+        self.recognizer = _ClampedRecognizer()
 
         # =====================================================
         # AJUSTES DEL RECONOCIMIENTO
@@ -79,9 +101,10 @@ class Listener:
 
         self.recognizer.dynamic_energy_ratio = 1.5
 
-        # Las órdenes cortas ("pausa", "siguiente") se cierran tras
-        # 0.35 s de silencio, para que se ejecuten casi de inmediato.
-        self.recognizer.pause_threshold = 0.35
+        # Silencio que marca el fin de la frase. Con 0.35 s Eco cortaba
+        # en la pausa natural entre palabras ("Abre ... Chrome" llegaba
+        # como "Abre"). 0.8 s deja terminar sin hacer esperar de más.
+        self.recognizer.pause_threshold = 0.8
 
         self.recognizer.phrase_threshold = 0.2
 
@@ -100,6 +123,8 @@ class Listener:
         # Ahora el umbral sigue al ruido (ver listen) y este tope solo
         # evita que se dispare a valores absurdos.
         self.MAX_ENERGY_THRESHOLD = 2500
+        self.recognizer.min_threshold = self.MIN_ENERGY_THRESHOLD
+        self.recognizer.max_threshold = self.MAX_ENERGY_THRESHOLD
 
         # La reducción espectral se aplicaba después de grabar cada frase.
         # Para órdenes cortas añade demora y puede adelgazar demasiado la

@@ -3104,6 +3104,58 @@ class Eco:
         command = text.lower().strip()
 
         # =====================================================
+        # VERBO SOLO ("Abre", "Pon", "Busca")
+        # Si la frase se cortó o dijiste solo el verbo, Eco pregunta
+        # en vez de adivinar el objetivo por lo que hablaste antes.
+        # Lo siguiente que digas se une a ese verbo.
+        # =====================================================
+
+        bare = re.sub(r"[¿?¡!.,;:]+", "", command).strip()
+        bare = re.sub(r"^(?:eco|echo)\s+|\s+(?:eco|echo)$", "", bare).strip()
+        lone_verbs = {
+            "abre": "¿Qué quieres que abra?",
+            "abrir": "¿Qué quieres que abra?",
+            "ábreme": "¿Qué quieres que abra?",
+            "cierra": "¿Qué quieres que cierre?",
+            "cerrar": "¿Qué quieres que cierre?",
+            "pon": "¿Qué quieres que ponga?",
+            "ponme": "¿Qué quieres que ponga?",
+            "reproduce": "¿Qué quieres que reproduzca?",
+            "busca": "¿Qué quieres que busque?",
+            "búscame": "¿Qué quieres que busque?",
+            "buscar": "¿Qué quieres que busque?",
+        }
+
+        pending_verb = getattr(self, "pending_verb", None)
+        self.pending_verb = None
+
+        if bare in lone_verbs:
+            self.pending_verb = (bare, time.time())
+            question = lone_verbs[bare]
+            print("ECO:", question)
+            self._update_window(response=question, status="● ECO LISTA")
+            try:
+                self.speaker.speak(question)
+            except Exception:
+                pass
+            return
+
+        if pending_verb and time.time() - pending_verb[1] < 20:
+            words = bare.split()
+            first = words[0] if words else ""
+            # Solo se une si suena a un nombre ("Chrome", "la calculadora"),
+            # no a otra orden o pregunta nueva.
+            other_order = first in lone_verbs or re.match(
+                r"(?:qu[eé]|c[oó]mo|cu[aá]l|cu[aá]nto|d[oó]nde|cu[aá]ndo|por|"
+                r"para|pausa|sigue|siguiente|det[eé]n|sube|baja|dime|cancela)$",
+                first,
+            )
+            if words and len(words) <= 5 and not other_order and "?" not in text:
+                command = f"{pending_verb[0]} {bare}"
+                text = command
+                print("COMPLETANDO ORDEN:", command)
+
+        # =====================================================
         # COMANDOS LOCALES
         # =====================================================
 
