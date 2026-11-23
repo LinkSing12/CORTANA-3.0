@@ -22,7 +22,9 @@ except Exception:
 
 class AudioDucker:
 
-    LEVEL = 0.2  # la música queda al 20% de su volumen actual
+    # Al oír "Eco", la música queda casi inaudible para que su eco no
+    # termine convertido en una orden. Eco conserva su propio volumen.
+    LEVEL = 0.05
     ACTIVE_STATE = 1
 
     def __init__(self, file_path=None):

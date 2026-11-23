@@ -85,32 +85,50 @@ class Listener:
 
         self.recognizer.dynamic_energy_ratio = 1.5
 
-        # pause_threshold: segundos de silencio para considerar
-        # que terminaste de hablar. 0.8 es un punto medio: ni corta
-        # demasiado rápido en pausas naturales al hablar, ni se queda
-        # esperando mucho tiempo tras terminar.
-        self.recognizer.pause_threshold = 1.0
+        # Las órdenes cortas ("pausa", "siguiente") se cierran tras
+        # 0.35 s de silencio, para que se ejecuten casi de inmediato.
+        self.recognizer.pause_threshold = 0.35
 
-        self.recognizer.phrase_threshold = 0.3
+        self.recognizer.phrase_threshold = 0.2
 
-        self.recognizer.non_speaking_duration = 0.5
+        self.recognizer.non_speaking_duration = 0.3
 
         # Piso mínimo del umbral de energía. Si la calibración
         # automática da un valor absurdamente bajo (ej. 83, como se
         # vio en pruebas reales), CUALQUIER ruido de fondo se
         # interpreta como "sigues hablando" y nunca detecta silencio.
-        self.MIN_ENERGY_THRESHOLD = 250
+        self.MIN_ENERGY_THRESHOLD = 80
+
+        # Una cámara suele reportar un ruido ambiente relativamente alto
+        # aunque la voz llegue baja. Si se congela ese valor (por ejemplo
+        # 774), Eco solo oye cuando hablas pegado al micrófono. Este tope
+        # conserva protección frente al ruido, sin volver inaccesible una
+        # voz normal a distancia.
+        self.MAX_ENERGY_THRESHOLD = 180
+
+        # La reducción espectral se aplicaba después de grabar cada frase.
+        # Para órdenes cortas añade demora y puede adelgazar demasiado la
+        # voz de una cámara. La cancelación de eco sigue activa; esta capa
+        # pesada queda apagada hasta que se necesite específicamente.
+        self.noise_reduction_enabled = False
 
         # =====================================================
         # MICRÓFONO
         # =====================================================
 
         self.echo_canceller = EchoCanceller() if EchoCanceller else None
+        self._use_echo_canceller = bool(
+            self.echo_canceller and self.echo_canceller.start()
+        )
+        self.microphone = None
+        self._microphone_device_index = None
+        self._microphone_device_name = None
 
-        if self.echo_canceller and self.echo_canceller.start():
-            self.microphone = EchoCancelledMicrophone(self.echo_canceller)
-        else:
-            self.microphone = sr.Microphone()
+        # El dispositivo predeterminado puede cambiar mientras Eco está
+        # abierto (por ejemplo, de la cámara a los audífonos Razer). Se
+        # consulta antes de cada escucha y se recrea el stream si Windows
+        # eligió otro, en vez de quedar amarrada al que había al iniciar.
+        self._refresh_microphone(force=True)
 
         # =====================================================
         # EVITAR REPETICIONES
@@ -128,45 +146,81 @@ class Listener:
         # CALIBRACIÓN
         # =====================================================
 
+        self._calibrate_microphone()
+
+    def _get_windows_default_microphone(self):
+        """Devuelve el índice y nombre del dispositivo predeterminado."""
+        audio = None
+        try:
+            audio = sr.Microphone.get_pyaudio().PyAudio()
+            info = audio.get_default_input_device_info()
+            return info["index"], str(info.get("name", "Desconocido"))
+        except Exception as error:
+            print("⚠️ No pude consultar el micrófono de Windows:", error)
+            return None, None
+        finally:
+            if audio is not None:
+                audio.terminate()
+
+    def _refresh_microphone(self, force=False):
+        """Reconecta Eco al dispositivo que Windows marque como entrada."""
+        device_index, device_name = self._get_windows_default_microphone()
+
+        if not force and device_index == self._microphone_device_index:
+            return False
+
+        try:
+            if self._use_echo_canceller:
+                microphone = EchoCancelledMicrophone(
+                    self.echo_canceller,
+                    device_index=device_index,
+                )
+            else:
+                microphone = sr.Microphone(device_index=device_index)
+        except Exception as error:
+            print("⚠️ No pude abrir el micrófono seleccionado:", error)
+            return False
+
+        self.microphone = microphone
+        self._microphone_device_index = device_index
+        self._microphone_device_name = device_name
+
+        print(f"🎙️ DISPOSITIVO DE WINDOWS: {device_name}")
+        return True
+
+    def _calibrate_microphone(self):
+        """Calibra el umbral para el dispositivo de entrada actual."""
         print()
         print("🎙️ CALIBRANDO MICRÓFONO...")
 
         try:
-
             with self.microphone as source:
-
                 # 2 segundos en vez de 1: calibración más estable
                 # frente a ruido de fondo (ventilador, eco, etc.)
-                self.recognizer.adjust_for_ambient_noise(
-                    source,
-                    duration=2
-                )
+                self.recognizer.adjust_for_ambient_noise(source, duration=2)
 
-            if self.recognizer.energy_threshold < self.MIN_ENERGY_THRESHOLD:
+            calibrated_threshold = self.recognizer.energy_threshold
+            safe_threshold = min(
+                max(calibrated_threshold, self.MIN_ENERGY_THRESHOLD),
+                self.MAX_ENERGY_THRESHOLD,
+            )
 
+            if safe_threshold != calibrated_threshold:
                 print(
-                    f"⚠️ Calibró un umbral muy bajo "
-                    f"({self.recognizer.energy_threshold:.0f}). "
-                    f"Se ajusta al mínimo seguro: {self.MIN_ENERGY_THRESHOLD}."
+                    f"⚠️ Umbral calibrado en {calibrated_threshold:.0f}. "
+                    f"Se ajusta a {safe_threshold:.0f} para voz normal."
                 )
-
-                self.recognizer.energy_threshold = self.MIN_ENERGY_THRESHOLD
+                self.recognizer.energy_threshold = safe_threshold
 
             # CONGELAR el umbral: ya no se recalcula solo durante la
             # sesión. Esto es lo que elimina el comportamiento errático.
             self.recognizer.dynamic_energy_threshold = False
-
             print(
                 f"✅ MICRÓFONO LISTO (umbral de energía fijo: "
                 f"{self.recognizer.energy_threshold:.0f})"
             )
-
         except Exception as error:
-
-            print(
-                "⚠️ No se pudo calibrar el micrófono:",
-                error
-            )
+            print("⚠️ No se pudo calibrar el micrófono:", error)
 
     # =========================================================
     # APLICAR CORRECCIONES FONÉTICAS
@@ -256,6 +310,14 @@ class Listener:
 
         try:
 
+            # Windows puede cambiar de entrada mientras Eco está
+            # esperando la siguiente orden. El stream anterior ya no se
+            # reutiliza: al detectar el nuevo predeterminado, se crea uno
+            # nuevo y se calibra antes de escuchar.
+            if self._refresh_microphone():
+                print("🔄 CAMBIO DE MICRÓFONO DETECTADO.")
+                self._calibrate_microphone()
+
             print()
             print("🎙️ ESCUCHANDO...")
 
@@ -295,14 +357,13 @@ class Listener:
             # ANULACIÓN DE RUIDO PROPIA
             # =================================================
 
-            t_denoise = time.time()
-
-            audio = self._reduce_noise(audio)
-
-            print(
-                f"🔇 ANULACIÓN DE RUIDO: "
-                f"{time.time() - t_denoise:.2f}s"
-            )
+            if self.noise_reduction_enabled:
+                t_denoise = time.time()
+                audio = self._reduce_noise(audio)
+                print(
+                    f"🔇 ANULACIÓN DE RUIDO: "
+                    f"{time.time() - t_denoise:.2f}s"
+                )
 
             # =================================================
             # RECONOCIMIENTO

@@ -85,6 +85,11 @@ if (Comando-Existe "ollama") {
     Write-Host "No pude confirmar que 'ollama' quedo en el PATH. Cierra y abre PowerShell de nuevo, y corre a mano: ollama pull $MODELO_OLLAMA" -ForegroundColor Yellow
 }
 
+# Ollama solo se usa para bajar el modelo; Eco lo corre con llama.cpp
+# en la GPU, que es mas rapido y no falla en esta PC.
+Write-Host "Instalando el motor de IA (llama.cpp)..."
+& (Join-Path $proyecto "instalar_motor_ia.ps1")
+
 Write-Host "`n=== 4/7: Tesseract-OCR (para el boton Jugar de Riot Client) ===" -ForegroundColor Cyan
 if (Comando-Existe "tesseract") {
     Write-Host "Tesseract ya esta instalado."

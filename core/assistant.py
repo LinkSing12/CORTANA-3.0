@@ -3,6 +3,7 @@ import re
 import time
 import threading
 import subprocess
+from datetime import datetime
 
 from voice.listener import Listener
 from voice.speaker import Speaker
@@ -35,6 +36,21 @@ except ImportError:
 
 
 class Eco:
+
+    # Estas órdenes son inequívocas y se ejecutan aunque Eco esté en modo
+    # pasivo. Así no hay que decir "Eco, pausa" para cortar una canción.
+    # Se mantienen frases cortas y exactas para no convertir una
+    # conversación normal en una orden multimedia por accidente.
+    INSTANT_MEDIA_COMMANDS = {
+        "pausa", "pausar", "pausa la música", "pausa la musica",
+        "pausa el video", "pausar el video", "ponlo en pausa",
+        "siguiente", "siguiente canción", "siguiente cancion",
+        "siguiente video", "pasa a la siguiente",
+        "anterior", "anterior canción", "anterior cancion",
+        "anterior video", "vuelve a la anterior",
+        "reanuda", "reanudar", "continúa", "continua",
+        "sigue", "reproduce", "reproducir",
+    }
 
     def __init__(self):
 
@@ -431,7 +447,15 @@ class Eco:
 
             command = None
 
-            if self.voice_active:
+            if self._is_instant_media_command(text):
+
+                # Los controles multimedia no requieren la palabra de
+                # activación ni esperan la ventana de 30 segundos. Esto
+                # se revisa antes de la lógica pasiva para responder con
+                # la menor latencia posible.
+                command = text
+
+            elif self.voice_active:
 
                 # Ya está activa: todo lo que diga cuenta como
                 # orden directa, sin necesitar repetir "eco" (y si
@@ -522,6 +546,34 @@ class Eco:
     # =========================================================
     # PALABRA DE ACTIVACIÓN
     # =========================================================
+
+    def _clock_answer(self, command):
+        text = re.sub(r"[¿?¡!.,]", "", command).strip()
+        now = datetime.now()
+
+        if re.fullmatch(r"(?:dime )?(?:qu[eé] hora es|qu[eé] horas son|la hora)(?: ahora)?", text):
+            hour = now.hour % 12 or 12
+            part = "de la mañana" if now.hour < 12 else "de la tarde" if now.hour < 19 else "de la noche"
+            return f"Son las {hour}:{now.minute:02d} {part}."
+
+        if re.fullmatch(
+            r"(?:dime )?(?:qu[eé] (?:d[ií]a|fecha) es(?: hoy)?|a cu[aá]nto estamos(?: hoy)?|"
+            r"qu[eé] d[ií]a estamos(?: hoy)?|la fecha(?: de hoy)?)",
+            text
+        ):
+            days = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+            months = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+                      "agosto", "septiembre", "octubre", "noviembre", "diciembre")
+            return (
+                f"Hoy es {days[now.weekday()]} {now.day} de "
+                f"{months[now.month - 1]} de {now.year}."
+            )
+
+        return None
+
+    def _is_instant_media_command(self, text):
+        normalized = re.sub(r"[¿?¡!.,;:]+", "", text.lower()).strip()
+        return normalized in self.INSTANT_MEDIA_COMMANDS
 
     def _strip_wake_word(self, text):
         """
@@ -1008,6 +1060,31 @@ class Eco:
 
             try:
                 self.speaker.speak(response)
+            except Exception:
+                pass
+
+            return True
+
+        # =====================================================
+        # HORA Y FECHA: se responden al instante, sin IA ni internet.
+        # =====================================================
+
+        clock_answer = self._clock_answer(command)
+
+        if clock_answer:
+
+            print()
+            print("LOCAL: HORA/FECHA")
+            print("ECO:", clock_answer)
+
+            self._update_window(
+                intent="TIME_DATE",
+                response=clock_answer,
+                status="● ECO LISTA"
+            )
+
+            try:
+                self.speaker.speak(clock_answer)
             except Exception:
                 pass
 

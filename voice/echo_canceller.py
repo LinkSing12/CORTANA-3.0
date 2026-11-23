@@ -32,6 +32,10 @@ PARTITIONS = 16         # 16 bloques = ~0.5 s de retardo/eco de la habitación
 STEP = 0.5
 MAX_QUEUE_SECONDS = 1
 SILENCE_RMS = 1e-4
+# Si el filtro quitó al menos el 88 % de la energía del micrófono,
+# lo que queda es normalmente residuo de los altavoces, no voz humana.
+# Se descarta para que el reconocimiento no transcriba la canción/video.
+ECHO_ONLY_RATIO = 0.12
 
 
 class EchoCanceller:
@@ -152,6 +156,15 @@ class EchoCanceller:
         music_playing = np.sqrt(np.mean(reference ** 2)) > SILENCE_RMS
         if music_playing and not self._is_talking(mic, error):
             self._adapt(spectrum, error)
+
+        # El filtro adaptativo no solo baja el volumen: cuando el bloque
+        # es casi por completo audio de la PC, lo convierte en silencio.
+        # Si la persona habla encima de la música, el residuo sube y pasa
+        # intacto, para no perder órdenes dichas a distancia.
+        mic_power = np.mean(mic ** 2) + 1e-12
+        error_power = np.mean(error ** 2) + 1e-12
+        if music_playing and error_power / mic_power < ECHO_ONLY_RATIO:
+            return np.zeros_like(error)
 
         return error
 

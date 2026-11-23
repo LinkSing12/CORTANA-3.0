@@ -17,5 +17,8 @@ data/whatsapp_profile/
 # Modelos de voz de Piper (pesados, se descargan aparte)
 piper_voice/
 
+# Motor de IA descargado (llama.cpp) y modelos: pesan cientos de MB
+engines/
+
 # Estado local del actualizador
 .last_update_check

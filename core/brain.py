@@ -2,10 +2,18 @@ import json
 import time
 import requests
 
+from core.llm_engine import LlamaEngine
+
 
 class Brain:
 
     def __init__(self):
+        # Motor principal: llama.cpp en la GPU (ver core/llm_engine.py).
+        # Ollama queda solo de respaldo si el motor no está instalado.
+        self.engine = LlamaEngine()
+        if self.engine.installed():
+            self.engine.start_in_background()
+
         # 127.0.0.1 en vez de "localhost": en algunas configuraciones
         # de Windows, resolver "localhost" intenta primero IPv6 (::1)
         # y tarda un poco antes de caer a IPv4. Usar la IP directa
@@ -25,6 +33,8 @@ class Brain:
         de que se entere comando por comando con un error de
         conexión repetido.
         """
+        if self.engine.installed():
+            return self.engine.is_ready() or self.engine.start(wait_seconds=20)
         try:
             response = requests.get(self.base_url, timeout=0.5)
             return response.status_code == 200
@@ -39,24 +49,8 @@ class Brain:
 
         try:
             t_req = time.time()
-            response = requests.post(
-                self.url,
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": False,
-                    # Mantiene el modelo cargado en memoria 30 min
-                    # entre comandos, para no pagar el costo de
-                    # recarga (varios segundos con un modelo de 14B)
-                    # cada vez que Eco lleva un rato sin hablarle.
-                    "keep_alive": "30m"
-                },
-                timeout=60
-            )
-            print(f"⏱ PETICIÓN HTTP A OLLAMA: {time.time() - t_req:.2f}s")
-            response.raise_for_status()
-            data = response.json()
-            raw = data.get("response", "").strip()
+            raw = self._complete(prompt, temperature=0.1)
+            print(f"⏱ MOTOR DE IA: {time.time() - t_req:.2f}s")
 
             print()
             print("RESPUESTA CEREBRO:", raw)
@@ -281,20 +275,27 @@ class Brain:
 
     def generate(self, prompt, temperature=None):
         try:
-            payload = {"model": self.model, "prompt": prompt, "stream": False, "keep_alive": "30m"}
-            if temperature is not None:
-                payload["options"] = {"temperature": temperature}
-            response = requests.post(
-                self.url,
-                json=payload,
-                timeout=60
-            )
-            response.raise_for_status()
-            return response.json().get("response", "").strip()
+            return self._complete(prompt, temperature)
         except Exception as error:
             print()
             print("ERROR GENERANDO RESPUESTA:", error)
             return ""
+
+    def _complete(self, prompt, temperature=None):
+        if self.engine.installed():
+            return self.engine.complete(prompt, temperature)
+
+        # Respaldo: Ollama, si el motor de llama.cpp no está instalado.
+        payload = {"model": self.model, "prompt": prompt, "stream": False, "keep_alive": "30m"}
+        if temperature is not None:
+            payload["options"] = {"temperature": temperature}
+        response = requests.post(
+            self.url,
+            json=payload,
+            timeout=60
+        )
+        response.raise_for_status()
+        return response.json().get("response", "").strip()
 
     def build_prompt(self, text, context):
         return f"""

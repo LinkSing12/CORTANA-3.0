@@ -75,6 +75,14 @@ class Speaker:
         self._window = None
         self._quitados = {}
 
+        # Piper cargado UNA vez en memoria: abrir un proceso nuevo por
+        # frase tardaba ~1.9 s antes de sonar; así tarda ~0.05 s. Se
+        # carga en segundo plano para no retrasar el arranque de Eco.
+        self._voice = None
+        self._voice_lock = threading.Lock()
+        if self._piper_ready:
+            threading.Thread(target=self._load_voice, daemon=True).start()
+
         if not self._piper_ready:
             safe_print(
                 "Info: Piper TTS no está listo todavía (falta el paquete o "
@@ -301,7 +309,32 @@ class Speaker:
                 except Exception:
                     pass
 
+    def _load_voice(self):
+        with self._voice_lock:
+            if self._voice is not None:
+                return self._voice
+            try:
+                from piper import PiperVoice
+                self._voice = PiperVoice.load(self.PIPER_MODEL)
+            except Exception as error:
+                safe_print("Info: no pude cargar Piper en memoria:", error)
+                self._voice = False
+            return self._voice
+
     def _run_piper(self, text, wav_path):
+        voice = self._load_voice()
+        if voice:
+            try:
+                import wave
+                with wave.open(wav_path, "wb") as wav_file:
+                    voice.synthesize_wav(text, wav_file)
+                return True
+            except Exception as error:
+                safe_print("ERROR PIPER EN MEMORIA:", error)
+
+        return self._run_piper_process(text, wav_path)
+
+    def _run_piper_process(self, text, wav_path):
         """
         Intenta primero el comando "piper" (el que queda instalado en
         el PATH tras "pip install piper-tts"); si no se encuentra
