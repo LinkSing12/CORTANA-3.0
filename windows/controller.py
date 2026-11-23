@@ -660,22 +660,57 @@ class WindowsController:
         except OSError as error:
             print("ERROR GUARDANDO JUEGO PORTABLE:", error)
 
+    # Ejecutables que acompañan a un juego pero no lo abren.
+    NOT_A_GAME_EXE = re.compile(
+        r"unins|setup|install|crash|redist|dxweb|rapidcrc|update|"
+        r"launcherhelper|ue4prereq|dotnet"
+    )
+
+    # Google transcribe los números como cifras: "Sparking Zero" llega
+    # como "sparking 0". Se comparan también escritos en letras.
+    DIGIT_WORDS = {
+        "0": "zero", "1": "one", "2": "two", "3": "three", "4": "four",
+        "5": "five", "6": "six", "7": "seven", "8": "eight", "9": "nine",
+    }
+
+    def _name_variants(self, text):
+        text = self.normalize_text(text)
+        spelled = " ".join(self.DIGIT_WORDS.get(w, w) for w in text.split())
+        spanish = spelled.replace("zero", "cero")
+        return {text, spelled, spanish}
+
     def _portable_game_score(self, target, path):
-        target = self.normalize_text(target)
-        compact_target = target.replace(" ", "")
         filename = os.path.splitext(os.path.basename(path))[0]
+        if self.NOT_A_GAME_EXE.search(filename.lower()):
+            return 0.0
         parent = os.path.basename(os.path.dirname(path))
-        labels = (self.normalize_text(filename), self.normalize_text(parent))
+        # "SparkingZERO" -> "Sparking ZERO", para comparar palabra a palabra.
+        split_camel = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", filename)
+        labels = {
+            self.normalize_text(filename),
+            self.normalize_text(split_camel),
+            self.normalize_text(parent),
+        }
         score = 0.0
 
-        for label in labels:
-            compact_label = label.replace(" ", "")
-            if label == target or compact_label == compact_target:
-                score = max(score, 100.0)
-            elif target in label or compact_target in compact_label:
-                score = max(score, 85.0)
-            else:
-                score = max(score, difflib.SequenceMatcher(None, target, label).ratio() * 70)
+        for target_variant in self._name_variants(target):
+            compact_target = target_variant.replace(" ", "")
+            if not compact_target:
+                continue
+            for label in labels:
+                compact_label = label.replace(" ", "")
+                if label == target_variant or compact_label == compact_target:
+                    score = max(score, 100.0)
+                elif target_variant in label or compact_target in compact_label:
+                    score = max(score, 85.0)
+                else:
+                    # Sin espacios tolera errores de dictado como
+                    # "Spain Zero" por "Sparking Zero".
+                    score = max(
+                        score,
+                        difflib.SequenceMatcher(None, target_variant, label).ratio() * 70,
+                        difflib.SequenceMatcher(None, compact_target, compact_label).ratio() * 80,
+                    )
         return score
 
     # Profundidad por defecto del escaneo de unidades completas. Antes
