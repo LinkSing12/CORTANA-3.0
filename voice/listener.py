@@ -70,15 +70,9 @@ class Listener:
 
         self.recognizer.energy_threshold = 300
 
-        # IMPORTANTE: dynamic_energy_threshold en True hace que el
-        # umbral se siga recalculando DURANTE toda la sesión, no solo
-        # al inicio. Si Eco habla por las bocinas y el micrófono
-        # capta ese sonido, o hay ruido variable (ventilador, etc.),
-        # el umbral puede saltar de forma errática (visto en pruebas
-        # reales: 150 -> 83 -> 2333 -> 5554 entre intentos), causando
-        # tanto cortes prematuros como que se quede "escuchando" de
-        # más. Por eso se calibra UNA VEZ al inicio y luego se
-        # CONGELA (ver más abajo, tras adjust_for_ambient_noise).
+        # El umbral se recalcula con el ruido mientras Eco espera. Antes
+        # saltaba de forma errática (150 -> 5554); ahora se limita entre
+        # MIN_ENERGY_THRESHOLD y MAX_ENERGY_THRESHOLD antes de cada escucha.
         self.recognizer.dynamic_energy_threshold = True
 
         self.recognizer.dynamic_energy_adjustment_damping = 0.15
@@ -99,12 +93,13 @@ class Listener:
         # interpreta como "sigues hablando" y nunca detecta silencio.
         self.MIN_ENERGY_THRESHOLD = 80
 
-        # Una cámara suele reportar un ruido ambiente relativamente alto
-        # aunque la voz llegue baja. Si se congela ese valor (por ejemplo
-        # 774), Eco solo oye cuando hablas pegado al micrófono. Este tope
-        # conserva protección frente al ruido, sin volver inaccesible una
-        # voz normal a distancia.
-        self.MAX_ENERGY_THRESHOLD = 180
+        # Tope del umbral. Antes era 180 y fijo, pero con música sonando
+        # el micrófono de la cámara recibe ~800 aun después de restar la
+        # música: con un umbral menor que el ruido, Eco creía que nunca
+        # dejabas de hablar, grababa 15 s de canción y el "eco" se perdía.
+        # Ahora el umbral sigue al ruido (ver listen) y este tope solo
+        # evita que se dispare a valores absurdos.
+        self.MAX_ENERGY_THRESHOLD = 2500
 
         # La reducción espectral se aplicaba después de grabar cada frase.
         # Para órdenes cortas añade demora y puede adelgazar demasiado la
@@ -212,11 +207,12 @@ class Listener:
                 )
                 self.recognizer.energy_threshold = safe_threshold
 
-            # CONGELAR el umbral: ya no se recalcula solo durante la
-            # sesión. Esto es lo que elimina el comportamiento errático.
-            self.recognizer.dynamic_energy_threshold = False
+            # El umbral se sigue ajustando al ruido mientras Eco espera
+            # que hables (sube si pones música, baja si la quitas); en
+            # cada escucha se mantiene entre el piso y el tope.
+            self.recognizer.dynamic_energy_threshold = True
             print(
-                f"✅ MICRÓFONO LISTO (umbral de energía fijo: "
+                f"✅ MICRÓFONO LISTO (umbral de energía inicial: "
                 f"{self.recognizer.energy_threshold:.0f})"
             )
         except Exception as error:
@@ -317,6 +313,14 @@ class Listener:
             if self._refresh_microphone():
                 print("🔄 CAMBIO DE MICRÓFONO DETECTADO.")
                 self._calibrate_microphone()
+
+            self.recognizer.energy_threshold = min(
+                max(
+                    self.recognizer.energy_threshold,
+                    self.MIN_ENERGY_THRESHOLD,
+                ),
+                self.MAX_ENERGY_THRESHOLD,
+            )
 
             print()
             print("🎙️ ESCUCHANDO...")
