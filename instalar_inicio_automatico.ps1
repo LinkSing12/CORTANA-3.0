@@ -1,14 +1,28 @@
 # Registra una Tarea Programada de Windows para que Eco se abra
-# sola (minimizada) cada vez que inicias sesion, sin necesitar
-# permisos de administrador.
+# sola (minimizada) y COMO ADMINISTRADOR cada vez que inicias sesion.
+# Al ser una tarea con "privilegios mas altos", Windows no pregunta
+# nada al iniciar sesion: solo pide permiso una vez, al registrarla.
 #
 # USO (desde PowerShell, en la carpeta del proyecto):
 #   powershell -ExecutionPolicy Bypass -File instalar_inicio_automatico.ps1
 #
-# PARA QUITARLO despues, desde PowerShell:
+# PARA QUITARLO despues, desde PowerShell como administrador:
 #   Unregister-ScheduledTask -TaskName "Eco - Inicio automatico"
 
 $ErrorActionPreference = "Stop"
+
+# Registrar una tarea de administrador requiere ser administrador.
+# Si no lo eres en esta ventana, se vuelve a abrir este script pidiendo
+# permiso a Windows (la ventana de "¿Quieres permitir...?").
+$esAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $esAdmin) {
+    Write-Host "Pidiendo permiso de administrador para registrar la tarea..."
+    $proceso = Start-Process powershell -Verb RunAs -Wait -PassThru -ArgumentList @(
+        "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`""
+    )
+    exit $proceso.ExitCode
+}
 
 $nombreTarea = "Eco - Inicio automatico"
 
@@ -38,10 +52,14 @@ $disparador = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $config = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
-Register-ScheduledTask -TaskName $nombreTarea `
-    -Action $accion -Trigger $disparador -Settings $config -Force | Out-Null
+# RunLevel Highest = se ejecuta como administrador, sin preguntar.
+$usuario = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$principal = New-ScheduledTaskPrincipal -UserId $usuario -LogonType Interactive -RunLevel Highest
 
-Write-Host "Listo. Eco se va a abrir sola (minimizada) la proxima vez que inicies sesion."
+Register-ScheduledTask -TaskName $nombreTarea `
+    -Action $accion -Trigger $disparador -Settings $config -Principal $principal -Force | Out-Null
+
+Write-Host "Listo. Eco se va a abrir sola (minimizada y como administrador) la proxima vez que inicies sesion."
 Write-Host ""
 Write-Host "Para probarlo ahora mismo sin reiniciar:"
 Write-Host "  Start-ScheduledTask -TaskName '$nombreTarea'"

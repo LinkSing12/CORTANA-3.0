@@ -6,6 +6,21 @@ REM donde lo ejecutes (doble clic, Programador de tareas, etc.)
 
 cd /d "%~dp0"
 
+REM Eco funciona como administrador. Si este .bat se abrio sin esos
+REM permisos (doble clic), se relanza: primero por la tarea programada,
+REM que ya tiene permiso y no pregunta nada; si no existe, Windows pide
+REM permiso con su ventana de "¿Quieres permitir...?".
+net session >nul 2>&1
+if errorlevel 1 (
+    schtasks /query /tn "Eco - Inicio automatico" /xml 2>nul | find "HighestAvailable" >nul
+    if not errorlevel 1 (
+        schtasks /run /tn "Eco - Inicio automatico" >nul
+    ) else (
+        powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    )
+    exit /b
+)
+
 if not exist ".venv\Scripts\python.exe" (
     echo No encontre .venv\Scripts\python.exe en esta carpeta.
     echo Ajusta la ruta en este archivo si tu entorno virtual
