@@ -384,7 +384,13 @@ class Eco:
 
             try:
 
-                text = self.listener.listen()
+                # En modo pasivo el detector local descarta, sin pasar
+                # por Google, lo que no empieza con "eco".
+                still_active = self.voice_active and (
+                    time.time() - self.voice_last_activity
+                    <= self.VOICE_ACTIVE_WINDOW_SECONDS
+                )
+                text = self.listener.listen(require_wake=not still_active)
 
             except Exception as error:
 

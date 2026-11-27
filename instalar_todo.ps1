@@ -122,6 +122,27 @@ if (Test-Path $modeloVoz) {
     }
 }
 
+# Detector local de la palabra "eco" (Vosk, espanol). Sin esto Eco
+# funciona igual, pero manda a Google todo lo que oye en modo pasivo.
+$carpetaVosk = "dataosk_model"
+if (-not (Test-Path $carpetaVosk)) {
+    try {
+        $zipVosk = Join-Path $env:TEMP "vosk-model-small-es-0.42.zip"
+        & curl.exe -sSL --fail -o $zipVosk "https://huggingface.co/rhasspy/vosk-models/resolve/main/es/vosk-model-small-es-0.42.zip"
+        $huellaVosk = (Get-FileHash $zipVosk -Algorithm SHA256).Hash.ToLower()
+        if ($huellaVosk -ne "09b239888f633ef2f0b4e09736e3d9936acfd810bc65d53fad45261762c6511f") {
+            throw "La huella del modelo de Vosk no coincide."
+        }
+        $tmpVosk = Join-Path $env:TEMP "vosk_model_extraido"
+        Expand-Archive -Path $zipVosk -DestinationPath $tmpVosk -Force
+        Move-Item (Join-Path $tmpVosk "vosk-model-small-es-0.42") $carpetaVosk
+        Remove-Item $zipVosk, $tmpVosk -Recurse -Force
+        Write-Host "Detector local de 'eco' instalado."
+    } catch {
+        Write-Host "No pude instalar el detector local de 'eco': $_" -ForegroundColor Yellow
+    }
+}
+
 Write-Host "`n=== 7/7: Inicio automatico con Windows ===" -ForegroundColor Cyan
 $scriptInicio = Join-Path $proyecto "instalar_inicio_automatico.ps1"
 if (Test-Path $scriptInicio) {

@@ -13,6 +13,7 @@ PyAudio
 numpy
 soundcard
 pycaw
+vosk
 
 # --- Internet ---
 requests

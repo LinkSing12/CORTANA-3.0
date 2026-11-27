@@ -20,6 +20,12 @@ try:
 except ImportError:
     EchoCanceller = None
 
+# Detecta "eco" en la PC, sin mandar a Google lo que no va dirigido a Eco.
+try:
+    from voice.wake_word import WakeWordDetector
+except ImportError:
+    WakeWordDetector = None
+
 
 class _ClampedRecognizer(sr.Recognizer):
     """
@@ -161,6 +167,8 @@ class Listener:
         # Momento en que empezó la última frase. El bucle de voz lo
         # usa para saber si llegó dentro de la ventana de 30s.
         self.last_phrase_started = None
+
+        self.wake_detector = WakeWordDetector() if WakeWordDetector else None
 
         # =====================================================
         # CALIBRACIÓN
@@ -327,7 +335,11 @@ class Listener:
     # ESCUCHAR
     # =========================================================
 
-    def listen(self):
+    def listen(self, require_wake=False):
+        """
+        require_wake=True (modo pasivo): si el detector local no oye
+        "eco" ni una orden rápida, la frase se descarta sin enviarla.
+        """
 
         try:
 
@@ -393,6 +405,20 @@ class Listener:
                     f"🔇 ANULACIÓN DE RUIDO: "
                     f"{time.time() - t_denoise:.2f}s"
                 )
+
+            if (
+                require_wake
+                and self.wake_detector
+                and self.wake_detector.available
+            ):
+                t_wake = time.time()
+                heard_wake, heard_instant = self.wake_detector.check(audio)
+                if not (heard_wake or heard_instant):
+                    print(
+                        f"🔒 Sin 'eco' (detector local, "
+                        f"{time.time() - t_wake:.2f}s): no se envía a Google."
+                    )
+                    return ""
 
             # =================================================
             # RECONOCIMIENTO
