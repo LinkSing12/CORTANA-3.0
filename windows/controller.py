@@ -5,6 +5,7 @@ import time
 import subprocess
 import webbrowser
 import difflib
+import threading
 
 try:
     import psutil
@@ -28,7 +29,16 @@ class WindowsController:
         self.cache_dir = "data"
         self.cache_file = os.path.join(self.cache_dir, "installed_programs.json")
         self.portable_games_file = os.path.join(self.cache_dir, "portable_games.json")
+        self.exe_index_file = os.path.join(self.cache_dir, "exe_index.json")
         os.makedirs(self.cache_dir, exist_ok=True)
+
+        # Lista de todos los .exe de los discos, para no recorrerlos cada
+        # vez que pides un juego que no está instalado "oficialmente".
+        # Se carga la del último inicio y se actualiza en segundo plano.
+        self._exe_index = self._load_exe_index()
+        self._exe_index_lock = threading.Lock()
+        self._exe_index_time = 0.0
+        threading.Thread(target=self._refresh_exe_index, daemon=True).start()
 
         self.programs = {}
         self.games = {}
@@ -721,6 +731,64 @@ class WindowsController:
     # "E:\Games\Nombre\bin\win64\juego.exe" sin recorrer todo el disco.
     DEFAULT_PORTABLE_SCAN_DEPTH = 8
 
+    SKIPPED_FOLDERS = {
+        "$recycle.bin", "system volume information", "windows",
+        "node_modules", "__pycache__", ".git", ".venv",
+        "program files", "program files (x86)", "programdata",
+        "appdata", "windows.old", "$windows.~bt", "$windows.~ws",
+    }
+
+    def _walk_executables(self, roots, max_depth=DEFAULT_PORTABLE_SCAN_DEPTH):
+        for base in roots:
+            for current_root, directories, files in os.walk(base, topdown=True):
+                relative = os.path.relpath(current_root, base)
+                depth = 0 if relative == "." else relative.count(os.sep) + 1
+                directories[:] = [
+                    item for item in directories
+                    if item.lower() not in self.SKIPPED_FOLDERS
+                ]
+                if max_depth is not None and depth >= max_depth:
+                    directories[:] = []
+                for filename in files:
+                    if filename.lower().endswith(".exe"):
+                        yield os.path.join(current_root, filename)
+
+    def _load_exe_index(self):
+        try:
+            with open(self.exe_index_file, "r", encoding="utf-8") as file:
+                data = json.load(file)
+            return data if isinstance(data, list) else []
+        except (OSError, json.JSONDecodeError):
+            return []
+
+    def _refresh_exe_index(self):
+        # Si ya se está actualizando (por ejemplo, desde otro hilo), no
+        # se recorre el disco dos veces a la vez.
+        if not self._exe_index_lock.acquire(blocking=False):
+            return
+        try:
+            self._build_exe_index()
+        finally:
+            self._exe_index_lock.release()
+
+    def _build_exe_index(self):
+        started = time.time()
+        try:
+            index = list(self._walk_executables(self._portable_game_roots()))
+        except Exception as error:
+            print("⚠️ No pude indexar los ejecutables:", error)
+            return
+        self._exe_index = index
+        self._exe_index_time = time.time()
+        temporary = self.exe_index_file + ".tmp"
+        try:
+            with open(temporary, "w", encoding="utf-8") as file:
+                json.dump(index, file, ensure_ascii=False)
+            os.replace(temporary, self.exe_index_file)
+        except OSError as error:
+            print("⚠️ No pude guardar el índice de ejecutables:", error)
+        print(f"📂 ÍNDICE DE PROGRAMAS: {len(index)} ejecutables ({time.time() - started:.1f}s)")
+
     def find_portable_game(self, target, max_depth=DEFAULT_PORTABLE_SCAN_DEPTH):
         """Encuentra un ejecutable en cualquier unidad local del equipo."""
         target = self.clean_target(target)
@@ -737,30 +805,31 @@ class WindowsController:
         if not roots:
             return None
 
-        print("BUSCANDO EJECUTABLE EN TODO EL EQUIPO:", ", ".join(roots))
-        for base in roots:
-            for current_root, directories, files in os.walk(base, topdown=True):
-                relative = os.path.relpath(current_root, base)
-                depth = 0 if relative == "." else relative.count(os.sep) + 1
-                directories[:] = [
-                    item for item in directories
-                    if item.lower() not in {
-                        "$recycle.bin", "system volume information", "windows",
-                        "node_modules", "__pycache__", ".git",
-                        "program files", "program files (x86)", "programdata",
-                        "appdata", "windows.old", "$windows.~bt", "$windows.~ws",
-                    }
-                ]
-                if max_depth is not None and depth >= max_depth:
-                    directories[:] = []
+        if self._exe_index:
+            candidates = self._exe_index
+        else:
+            print("BUSCANDO EJECUTABLE EN TODO EL EQUIPO:", ", ".join(roots))
+            candidates = self._walk_executables(roots, max_depth)
 
-                for filename in files:
-                    if not filename.lower().endswith(".exe"):
-                        continue
-                    path = os.path.join(current_root, filename)
-                    score = self._portable_game_score(target, path)
-                    if score > best_score:
-                        best_path, best_score = path, score
+        for path in candidates:
+            score = self._portable_game_score(target, path)
+            if score > best_score:
+                best_path, best_score = path, score
+
+        if best_path and not os.path.isfile(best_path):
+            best_path = None
+
+        # Instalado después de armar el índice: se recorre el disco, salvo
+        # que el índice sea de hace menos de 10 minutos.
+        if (
+            self._exe_index and best_score < 60
+            and time.time() - self._exe_index_time > 600
+        ):
+            print("BUSCANDO EJECUTABLE EN TODO EL EQUIPO:", ", ".join(roots))
+            for path in self._walk_executables(roots, max_depth):
+                score = self._portable_game_score(target, path)
+                if score > best_score:
+                    best_path, best_score = path, score
 
         # Evita abrir un .exe apenas parecido por accidente.
         if best_path and best_score >= 60:
@@ -1310,16 +1379,18 @@ class WindowsController:
             if extension not in {".lnk", ".exe"}:
                 continue
             display_name = os.path.splitext(item)[0]
-            normalized_name = self.normalize_text(display_name)
-            if normalized_name == requested:
-                candidates.insert(0, (display_name, path))
-            elif requested in normalized_name:
-                candidates.append((display_name, path))
+            # Misma comparación tolerante que para los juegos: acepta
+            # "sparking 0" por "Sparking Zero" y errores de dictado.
+            score = self._portable_game_score(target, display_name + ".exe")
+            if score >= 60:
+                candidates.append((score, display_name, path))
 
         if not candidates:
-            return f"No encontré {target} como acceso directo o ejecutable en el Escritorio."
+            # Si no está en el Escritorio, se busca como cualquier programa.
+            return self.open_program(target)
 
-        display_name, path = candidates[0]
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        _, display_name, path = candidates[0]
         try:
             os.startfile(path)
             return f"Ejecutando {display_name} desde el Escritorio."
