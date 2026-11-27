@@ -32,10 +32,10 @@ PARTITIONS = 16         # 16 bloques = ~0.5 s de retardo/eco de la habitación
 STEP = 0.5
 MAX_QUEUE_SECONDS = 1
 SILENCE_RMS = 1e-4
-# Si el filtro quitó al menos el 88 % de la energía del micrófono,
-# lo que queda es normalmente residuo de los altavoces, no voz humana.
-# Se descarta para que el reconocimiento no transcriba la canción/video.
-ECHO_ONLY_RATIO = 0.12
+# Sin esto, en frecuencias donde la música casi no tiene energía el
+# filtro dividía por casi cero y se desestabilizaba: en vez de restar
+# la música la multiplicaba por 30 (medido con un tono + voz).
+REGULARIZATION = 1.0
 
 
 class EchoCanceller:
@@ -53,6 +53,7 @@ class EchoCanceller:
         self._spectra = np.zeros((PARTITIONS, bins), dtype=np.complex128)
         self._power = np.zeros(bins)
         self._previous = np.zeros(BLOCK)
+        self._power_ready = False
         self._reduction = 0.0
         self._usual_error = 0.0
         self._frozen = 0
@@ -157,15 +158,9 @@ class EchoCanceller:
         if music_playing and not self._is_talking(mic, error):
             self._adapt(spectrum, error)
 
-        # El filtro adaptativo no solo baja el volumen: cuando el bloque
-        # es casi por completo audio de la PC, lo convierte en silencio.
-        # Si la persona habla encima de la música, el residuo sube y pasa
-        # intacto, para no perder órdenes dichas a distancia.
-        mic_power = np.mean(mic ** 2) + 1e-12
-        error_power = np.mean(error ** 2) + 1e-12
-        if music_playing and error_power / mic_power < ECHO_ONLY_RATIO:
-            return np.zeros_like(error)
-
+        # Antes, si el bloque parecía solo música se convertía en
+        # silencio; eso abría huecos de 32 ms en medio de la voz y Google
+        # entendía peor. Ahora siempre se devuelve lo que queda tras restar.
         return error
 
     def _is_talking(self, mic, error):
@@ -197,14 +192,23 @@ class EchoCanceller:
         return False
 
     def _adapt(self, spectrum, error):
-        self._power = 0.9 * self._power + 0.1 * np.abs(spectrum) ** 2
+        power = np.abs(spectrum) ** 2
+        if not self._power_ready:
+            self._power = power
+            self._power_ready = True
+        else:
+            self._power = 0.9 * self._power + 0.1 * power
 
         error_spectrum = np.fft.rfft(
             np.concatenate((np.zeros(BLOCK), error))
         )
         gradient = (
             STEP * np.conj(self._spectra) * error_spectrum
-            / (self._power * PARTITIONS + 1e-9)
+            / (
+                PARTITIONS * self._power
+                + REGULARIZATION * PARTITIONS * np.mean(self._power)
+                + 1e-9
+            )
         )
 
         # Sin esto la multiplicación en frecuencia mezclaría bloques.

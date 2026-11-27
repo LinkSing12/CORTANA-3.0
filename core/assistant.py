@@ -106,6 +106,7 @@ class Eco:
         self.WAKE_WORD_VARIANTS = (
             "eco", "ecko", "esco", "eko", "ecco",
             "hecko", "ehco", "equo", "heco", "echo",
+            "keko", "gekko", "geko", "queco",
         )
         self.VOICE_ACTIVE_WINDOW_SECONDS = 30
         self.voice_active = False
