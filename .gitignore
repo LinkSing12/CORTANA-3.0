@@ -23,3 +23,4 @@ engines/
 # Estado local del actualizador
 .last_update_check
 data/vosk_model/
+memory/data.json
