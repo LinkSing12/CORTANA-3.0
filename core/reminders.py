@@ -9,6 +9,8 @@ Ejemplos que entiende:
     "qué recordatorios tengo"  /  "cuánto falta del temporizador"
     "cancela la alarma"  /  "borra todos los recordatorios"
     "pospón la alarma 10 minutos"
+    "pon una alarma todos los días a las 7"  /  "de lunes a viernes a las 6"
+    "recuérdame los lunes a las 9 sacar la basura"
 
 Se guardan en data/reminders.json, así que sobreviven a cerrar Eco.
 Si Eco estaba cerrado cuando tocaba avisar, al abrirlo avisa de los
@@ -119,6 +121,68 @@ _FILLER = re.compile(
     r"me|te|lo|se|tengo\s+que|hay\s+que|,)(?:\s+|$))+"
     r"|(?:\s+(?:y|que|de|a|para|el|la|por\s+favor|porfa|,))+$"
 )
+
+# Repeticiones: "todos los días", "de lunes a viernes", "los fines de
+# semana", "todos los lunes y jueves". Ojo: "el lunes" (singular) es una
+# sola vez; "los lunes" se repite.
+_WD = r"(?:lunes|martes|miercoles|jueves|viernes|sabados?|domingos?)"
+_REPEAT = re.compile(
+    r"\b(?:todos\s+los\s+dias|cada\s+dia|diari[ao]s?|diariamente)\b"
+    r"|\b(?:de\s+)?lunes\s+a\s+viernes\b|\bentre\s+semana\b"
+    r"|\b(?:todos\s+)?(?:los\s+)?fines?\s+de\s+semana\b"
+    rf"|\b(?:todos\s+los|cada|los)\s+{_WD}(?:\s*(?:,|\by\b)\s*(?:los\s+)?{_WD})*\b"
+)
+ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
+WEEKDAY_NAMES = ("lunes", "martes", "miércoles", "jueves", "viernes",
+                 "sábado", "domingo")
+
+
+def parse_repeat(text):
+    """Devuelve (días 0=lunes..6=domingo, tramo) o None."""
+    match = _REPEAT.search(text)
+    if not match:
+        return None
+    found = match.group(0)
+    if re.search(r"dia|diari", found):
+        days = ALL_DAYS
+    elif re.search(r"lunes\s+a\s+viernes|entre\s+semana", found):
+        days = [0, 1, 2, 3, 4]
+    elif "semana" in found:
+        days = [5, 6]
+    else:
+        days = sorted({
+            _WEEKDAYS[name if name in _WEEKDAYS else name[:-1]]
+            for name in re.findall(_WD, found)
+        })
+    return days, match.span()
+
+
+def describe_repeat(days):
+    days = sorted(days)
+    if days == ALL_DAYS:
+        return "todos los días"
+    if days == [0, 1, 2, 3, 4]:
+        return "de lunes a viernes"
+    if days == [5, 6]:
+        return "los fines de semana"
+    names = [
+        WEEKDAY_NAMES[d] + ("" if WEEKDAY_NAMES[d].endswith("s") else "s")
+        for d in days
+    ]
+    if len(names) == 1:
+        return f"los {names[0]}"
+    return "los " + ", ".join(names[:-1]) + " y " + names[-1]
+
+
+def next_occurrence(hour, minute, days, after):
+    """Próxima fecha a esa hora en uno de esos días, después de 'after'."""
+    base = after.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    for offset in range(8):
+        moment = base + timedelta(days=offset)
+        if moment > after and moment.weekday() in days:
+            return moment
+    return None
+
 
 KIND_NAMES = {"reminder": "recordatorio", "alarm": "alarma", "timer": "temporizador"}
 KIND_PLURALS = {"reminder": "recordatorios", "alarm": "alarmas", "timer": "temporizadores"}
@@ -249,10 +313,14 @@ class ReminderManager:
             for item in self._items:
                 if item["due"] > now:
                     keep.append(item)
-                elif item["kind"] == "reminder" or now - item["due"] <= LATE_LIMIT_SECONDS:
+                    continue
+                if item["kind"] == "reminder" or now - item["due"] <= LATE_LIMIT_SECONDS:
                     late.append(item)
                 else:
                     print("RECORDATORIOS: se descarta por atrasado ->", item)
+                following = self._reschedule(item)
+                if following:
+                    keep.append(following)
             self._items = keep
             self._save()
 
@@ -266,10 +334,29 @@ class ReminderManager:
                 due = [item for item in self._items if item["due"] <= now]
                 if due:
                     self._items = [item for item in self._items if item["due"] > now]
+                    for item in due:
+                        following = self._reschedule(item)
+                        if following:
+                            self._items.append(following)
                     self._save()
 
             for item in sorted(due, key=lambda item: item["due"]):
                 self._fire(item)
+
+    def _reschedule(self, item):
+        """Copia de una alarma repetida con su próxima fecha, o None."""
+        days = item.get("repeat")
+        if not days:
+            return None
+        last = datetime.fromtimestamp(item["due"])
+        moment = next_occurrence(
+            last.hour, last.minute, days, max(datetime.now(), last)
+        )
+        if moment is None:
+            return None
+        following = dict(item)
+        following["due"] = moment.timestamp()
+        return following
 
     def _fire(self, item, late=False):
         if item["kind"] == "alarm":
@@ -311,7 +398,7 @@ class ReminderManager:
     # CREAR / LISTAR / CANCELAR
     # =========================================================
 
-    def add(self, kind, due, message="", seconds=None):
+    def add(self, kind, due, message="", seconds=None, repeat=None):
         item = {
             "id": uuid.uuid4().hex[:8],
             "kind": kind,
@@ -321,6 +408,8 @@ class ReminderManager:
         }
         if seconds is not None:
             item["seconds"] = int(round(seconds))
+        if repeat:
+            item["repeat"] = sorted(repeat)
 
         with self._lock:
             self._items.append(item)
@@ -385,9 +474,19 @@ class ReminderManager:
         if _REMAINING.search(text):
             return self._list(kind, remaining=True)
 
+        repeat = None
+        if kind != "timer":
+            parsed_repeat = parse_repeat(text)
+            if parsed_repeat:
+                repeat, (start, end) = parsed_repeat
+                # Se borra del texto (mismo largo) para que "los lunes" no
+                # se lea como "el próximo lunes" ni quede en el mensaje.
+                text = text[:start] + " " * (end - start) + text[end:]
+                original = original[:start] + " " * (end - start) + original[end:]
+
         when = self._parse_when(text, kind)
 
-        is_creation = (
+        is_creation = repeat is not None or (
             when is not None
             or _CREATE_VERBS.search(text)
             or re.search(r"\b(?:recuerdame|recordarme|avisame|despiertame|levantame|recuerda\s+que|no\s+me\s+dejes\s+olvidar)\b", text)
@@ -410,6 +509,7 @@ class ReminderManager:
                 "kind": kind,
                 "message": self._extract_message(original, text, []),
                 "expires": time.time() + PENDING_SECONDS,
+                "repeat": repeat,
             }
             if kind == "timer":
                 return "ASK_REMINDER_TIME", "¿De cuánto tiempo pongo el temporizador?"
@@ -419,7 +519,7 @@ class ReminderManager:
 
         due, seconds, spans = when
         message = self._extract_message(original, text, spans)
-        return self._create(kind, due, seconds, message)
+        return self._create(kind, due, seconds, message, repeat=repeat)
 
     def _take_pending(self):
         pending, self._pending = self._pending, None
@@ -432,10 +532,31 @@ class ReminderManager:
         if when is None:
             return None
         due, seconds, _spans = when
-        return self._create(pending["kind"], due, seconds, pending["message"])
+        return self._create(
+            pending["kind"], due, seconds, pending["message"],
+            repeat=pending.get("repeat"),
+        )
 
-    def _create(self, kind, due, seconds, message):
+    def _create(self, kind, due, seconds, message, repeat=None):
         now = datetime.now()
+
+        if repeat:
+            if seconds is not None:
+                return "REMINDER_ERROR", (
+                    "Para repetirla dime una hora, por ejemplo: "
+                    "todos los días a las 7."
+                )
+            due = next_occurrence(due.hour, due.minute, repeat, now)
+            self.add(kind, due.timestamp(), message, repeat=repeat)
+            when_text = f"{describe_repeat(repeat)} a las {due.strftime('%H:%M')}"
+            if kind == "alarm":
+                return "SET_ALARM", (
+                    f"Alarma puesta {when_text}. "
+                    f"La primera suena {describe_when(due, now)}."
+                )
+            if message:
+                return "SET_REMINDER", f"Te recordaré {message} {when_text}."
+            return "SET_REMINDER", f"Te aviso {when_text}."
 
         if kind == "timer" and seconds is None:
             seconds = max(0, (due - now).total_seconds())
@@ -479,6 +600,8 @@ class ReminderManager:
             due = datetime.fromtimestamp(item["due"])
             if kind == "timer" or remaining:
                 detail = f"quedan {describe_duration((due - now).total_seconds())}"
+            elif item.get("repeat"):
+                detail = f"{describe_repeat(item['repeat'])} a las {due.strftime('%H:%M')}"
             else:
                 detail = describe_when(due, now)
             message = item.get("message", "")
