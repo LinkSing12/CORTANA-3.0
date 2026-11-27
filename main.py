@@ -35,7 +35,9 @@ def _ya_hay_otra_instancia():
         _MUTEX = kernel32.CreateMutexW(
             None, False, "Local\\EcoAsistenteUnaSolaInstancia"
         )
-        return ctypes.get_last_error() == 183  # ERROR_ALREADY_EXISTS
+        # 183 = ya existe. 5 = acceso denegado: pasa cuando el Eco que ya
+        # corre es de administrador y esta copia no; también es "ya hay uno".
+        return ctypes.get_last_error() in (183, 5)
     except Exception:
         return False
 
