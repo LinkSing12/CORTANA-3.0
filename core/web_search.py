@@ -1,7 +1,9 @@
 import html
 import re
+import time
 import unicodedata
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeout
 
 import requests
 from ddgs import DDGS
@@ -49,9 +51,15 @@ def keywords(query):
 
 class WebSearch:
 
-    # Los buscadores a veces responden "sin resultados" a una búsqueda
-    # normal; se prueba el siguiente antes de darse por vencido.
-    BACKENDS = ("auto", "google", "brave", "mojeek")
+    # Se consultan todos A LA VEZ y se usa el primero que traiga
+    # resultados útiles en español. Uno por uno (como antes, empezando
+    # por "auto") se tardaba 3-4 s; Google siempre responde pero tarda
+    # ~2.8 s, Yahoo a veces responde en menos de 1 s.
+    BACKENDS = ("google", "yahoo", "bing")
+
+    # Si ningún buscador trajo nada útil en este tiempo, se responde con
+    # Wikipedia (que ya se consultó en paralelo).
+    WEB_DEADLINE = 4.5
 
     # Videos, redes y documentos con muro: sin texto que se pueda leer.
     NO_TEXT_SITES = (
@@ -67,6 +75,9 @@ class WebSearch:
         self.max_results = 10
         self.timeout = 8
         self.page_timeout = 5
+        # Hilos que sobreviven a cada búsqueda: los buscadores lentos
+        # terminan en segundo plano sin hacer esperar la respuesta.
+        self._pool = ThreadPoolExecutor(max_workers=8)
 
     def search(self, query):
 
@@ -79,17 +90,29 @@ class WebSearch:
         print("🌐 BUSCANDO EN INTERNET:")
         print(query)
 
-        for backend in self.BACKENDS:
+        started = time.time()
+        pending = {
+            self._pool.submit(self._search_backend, query, backend): backend
+            for backend in self.BACKENDS
+        }
+        wikipedia = self._pool.submit(self._search_wikipedia, query)
 
-            results = self._search_backend(query, backend)
-
-            if results:
-                ranked = self.rank(query, results)
-                print(f"✅ RESULTADOS ÚTILES: {len(ranked)} ({backend})")
+        try:
+            for future in as_completed(pending, timeout=self.WEB_DEADLINE):
+                ranked = self.rank(query, future.result())
                 if ranked:
+                    print(
+                        f"✅ RESULTADOS ÚTILES: {len(ranked)} "
+                        f"({pending[future]}, {time.time() - started:.1f}s)"
+                    )
                     return ranked
+        except FuturesTimeout:
+            print(f"⚠️ Los buscadores tardaron más de {self.WEB_DEADLINE:.0f}s.")
 
-        ranked = self.rank(query, self._search_wikipedia(query))
+        try:
+            ranked = self.rank(query, wikipedia.result(timeout=self.timeout))
+        except Exception:
+            ranked = []
         if ranked:
             print(f"✅ RESULTADOS ÚTILES: {len(ranked)} (Wikipedia)")
             return ranked
