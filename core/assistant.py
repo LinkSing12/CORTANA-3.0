@@ -269,20 +269,26 @@ class Eco:
         print()
 
         if self.brain.is_available():
-            print("✅ OLLAMA: conectado y listo.")
+            engine = getattr(self.brain, "engine", None)
+            if engine is not None and engine.installed():
+                print("✅ MOTOR DE IA: llama.cpp en la GPU, listo.")
+            else:
+                print("✅ MOTOR DE IA: Ollama, listo.")
         else:
             print("=" * 55)
-            print("⚠️  OLLAMA NO ESTÁ CORRIENDO.")
+            print("⚠️  EL MOTOR DE IA NO RESPONDE.")
             print(
                 "   Los comandos que necesiten interpretar lenguaje "
                 "libre (preguntas, búsquedas, órdenes no reconocidas)"
             )
             print(
-                "   van a fallar hasta que abras Ollama. Los comandos "
-                "directos (abrir/cerrar programas, volumen, sistema)"
+                "   van a fallar. Los comandos directos (abrir/cerrar "
+                "programas, volumen, sistema) seguirán funcionando."
             )
-            print("   seguirán funcionando normal.")
-            print("   Para arrancarlo: abre la app Ollama, o corre 'ollama serve'.")
+            print(
+                "   Para instalarlo: powershell -ExecutionPolicy Bypass "
+                "-File instalar_motor_ia.ps1"
+            )
             print("=" * 55)
         print()
 
@@ -3447,7 +3453,7 @@ class Eco:
                     context
                 )
 
-                print(f"⏱ CEREBRO (Ollama): {time.time() - t_brain:.2f}s")
+                print(f"⏱ CEREBRO (IA): {time.time() - t_brain:.2f}s")
 
             except Exception as error:
 
